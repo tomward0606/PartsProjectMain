@@ -1,0 +1,166 @@
+/* Base layout */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8f9fa;
+  color: #212529;
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+h3, h5, h6 {
+  color: #000;
+  margin-bottom: 0.5rem;
+}
+
+/* Card layout */
+.card {
+  background-color: #ffffff;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.06);
+  transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  border-color: #6c757d;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.1);
+}
+
+.card-title, .card-subtitle, .card-text {
+  color: #212529;
+}
+
+/* Buttons */
+.btn {
+  border-radius: 0.375rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background-color: #0e1178;
+  color: #fff;
+  border: none;
+}
+
+.btn-primary:hover {
+  background-color: #0b5ed7;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  color: #fff;
+  border: none;
+}
+
+.btn-danger:hover {
+  background-color: #bb2d3b;
+}
+
+.btn-success {
+  background-color: #7f7b89;
+  border: none;
+}
+
+.btn-success:hover {
+  background-color: #4f4d55;
+}
+
+.btn-secondary {
+  background-color: #0d1b2a;
+  color: #fff;
+  border: none;
+}
+
+.btn-secondary:hover {
+  background-color: #1b2a41;
+}
+
+/* Form inputs */
+.form-control,
+.form-select {
+  background-color: #fff;
+  color: #212529;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+}
+
+.form-control::placeholder {
+  color: #6c757d;
+}
+
+/* Spacing tweaks */
+.mb-2, .mb-3, .mb-4 {
+  margin-bottom: 1rem !important;
+}
+
+.mt-2, .mt-3, .mt-4 {
+  margin-top: 1rem !important;
+}
+
+/* Sticky header (clean and compact) */
+header.sticky-top {
+  background-color: #ffffff;
+  border-bottom: 1px solid #ddd;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  padding: 0.75rem 1rem;
+}
+
+header .container-fluid {
+  padding: 0;
+}
+
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+header h3 {
+  color: #000 !important;
+  margin: 0;
+}
+
+header form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+}
+
+/* Page layout */
+.container {
+  padding-bottom: 2rem;
+}
+
+/* Logo styles */
+.logo-center {
+  height: 40px;
+  object-fit: contain;
+}
+
+
+/* Image styles */
+.image-square {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 0.375rem;
+  background-color: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-square img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
