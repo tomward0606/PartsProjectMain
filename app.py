@@ -92,7 +92,7 @@ def submit_basket():
         print(f"{part_number}: {item}")
 
     parts_list = "\n".join([
-        f" x{item['quantity'] {part_number.strip()} - {item['description']} ({item['make']} / {item['manufacturer']})}"
+        f" x{item['quantity']} {part_number.strip()} - {item['description']} ({item['make']} / {item['manufacturer']})}"
         for part_number, item in basket.items()
     ])
 
