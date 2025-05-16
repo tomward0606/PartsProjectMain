@@ -32,17 +32,32 @@ with open('parts.csv', newline='', encoding='cp1252') as csvfile:
             'image': clean_filename
         })
 
-def get_categories():
-    return sorted(set(part['category'] for part in parts_db))
+def get_categories(parts):
+    return sorted(set(part['category'] for part in parts))
 
 @app.route('/')
+def landing():
+    return render_template('landing.html')
+
+@app.route('/catalogue')
 def index():
+    parts = [p for p in parts_db if 'reagent' not in p['category'].lower()]
     category = request.args.get('category')
     search = request.args.get('search', '').lower()
-    filtered_parts = [p for p in parts_db if
+    filtered_parts = [p for p in parts if
                       (not category or p['category'] == category) and
                       (search in p['description'].lower() or search in p['part_number'].lower() or search in p['make'].lower() or search in p['manufacturer'].lower())]
-    return render_template('index.html', parts=filtered_parts, categories=get_categories(), selected_category=category, search=search)
+    return render_template('index.html', parts=filtered_parts, categories=get_categories(parts), selected_category=category, search=search)
+
+@app.route('/reagents')
+def reagents():
+    parts = [p for p in parts_db if 'reagent' in p['category'].lower()]
+    category = request.args.get('category')
+    search = request.args.get('search', '').lower()
+    filtered_parts = [p for p in parts if
+                      (not category or p['category'] == category) and
+                      (search in p['description'].lower() or search in p['part_number'].lower() or search in p['make'].lower() or search in p['manufacturer'].lower())]
+    return render_template('reagents.html', parts=filtered_parts, categories=get_categories(parts), selected_category=category, search=search)
 
 @app.route('/add_to_basket/<path:part_number>')
 def add_to_basket(part_number):
@@ -51,7 +66,7 @@ def add_to_basket(part_number):
         return redirect(url_for('index'))
 
     basket = session.get('basket', {})
-    if isinstance(basket, list):  # Clean up old format
+    if isinstance(basket, list):
         basket = {}
 
     if part_number in basket:
@@ -66,7 +81,13 @@ def add_to_basket(part_number):
             'quantity': 1
         }
     session['basket'] = basket
-    return redirect(url_for('index'))
+
+    # First, check if this is an AJAX request
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return ('', 204)
+
+    # Otherwise, do a normal redirect
+    return redirect(request.referrer or url_for('index'))
 
 @app.route('/basket')
 def view_basket():
@@ -87,17 +108,13 @@ def submit_basket():
     if not basket or not engineer_email:
         return redirect(url_for('view_basket'))
 
-    print("=== DEBUG: Basket contents before email ===")
-    for part_number, item in basket.items():
-        print(f"{part_number}: {item}")
-
     parts_list = "\n".join([
-        f" x{item['quantity']} {part_number.strip()} - {item['description']} ({item['make']} / {item['manufacturer']})"
+        f"{part_number.strip()} - {item['description']} ({item['make']} / {item['manufacturer']}) x{item['quantity']}"
         for part_number, item in basket.items()
     ])
 
     msg = Message('Parts Request',
-                  recipients=['mike@servitech.co.uk'],  #replac1e with actual recipient
+                  recipients=['dispatch@email.com'],
                   cc=[engineer_email])
     msg.body = f"Engineer {engineer_email} requests the following parts:\n\n{parts_list}"
     mail.send(msg)
