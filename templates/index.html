@@ -30,35 +30,38 @@
     </div>
   </header>
 
-  <div class="container mt-4">
-    <div class="row g-3">
-      {% for part in parts %}
-        <div class="col-12 col-md-6">
-          <div class="card h-100">
-            <div class="card-body d-flex flex-column">
-              <h5 class="card-title">{{ part.part_number }}</h5>
-              <h6 class="card-subtitle text-muted mb-2">{{ part.description }}</h6>
-              <p class="card-text"><strong>Category:</strong> {{ part.category }}</p>
-              {% if part.make %}
-                <p class="card-text"><strong>Make:</strong> {{ part.make }}</p>
-              {% endif %}
-              {% if part.manufacturer %}
-                <p class="card-text"><strong>Manufacturer:</strong> {{ part.manufacturer }}</p>
-              {% endif %}
-              {% if part.image %}
-                <div class="image-square mb-2">
-                  <img src="{{ url_for('static', filename='images/' + part.image) }}" alt="{{ part.description }}">
-                </div>
-              {% endif %}
-              <button onclick="addToBasket('{{ part.part_number }}')" class="btn btn-primary mt-auto" type="button">
-                Add to Basket
-              </button>
-            </div>
+{% if parts %}
+  <div class="row g-3">
+    {% for part in parts %}
+      <div class="col-12 col-md-6">
+        <div class="card h-100">
+          <div class="card-body d-flex flex-column">
+            <h5 class="card-title">{{ part.part_number }}</h5>
+            <h6 class="card-subtitle text-muted mb-2">{{ part.description }}</h6>
+            <p class="card-text"><strong>Category:</strong> {{ part.category }}</p>
+            {% if part.make %}
+              <p class="card-text"><strong>Make:</strong> {{ part.make }}</p>
+            {% endif %}
+            {% if part.manufacturer %}
+              <p class="card-text"><strong>Manufacturer:</strong> {{ part.manufacturer }}</p>
+            {% endif %}
+            {% if part.image %}
+              <div class="image-square mb-2">
+                <img src="{{ url_for('static', filename='images/' + part.image) }}" alt="{{ part.description }}">
+              </div>
+            {% endif %}
+            <button onclick="addToBasket('{{ part.part_number }}')" class="btn btn-primary mt-auto" type="button">
+              Add to Basket
+            </button>
           </div>
         </div>
-      {% endfor %}
-    </div>
+      </div>
+    {% endfor %}
   </div>
+{% else %}
+  <p class="text-center mt-4 text-muted">No items match your search.</p>
+{% endif %}
+
 
   <!-- Toast popup -->
   <div id="toast" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999; display: none;">
