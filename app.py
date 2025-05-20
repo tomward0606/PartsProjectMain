@@ -114,7 +114,7 @@ def submit_basket():
     ])
 
     msg = Message('Parts Request',
-                  recipients=['jayn@servitech.co.uk'],
+                  recipients=['placeholder@gmail.com'],
                   cc=[engineer_email])
     msg.body = f"Engineer {engineer_email} requests the following parts:\n\n{parts_list}"
     mail.send(msg)
