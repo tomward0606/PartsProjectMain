@@ -121,10 +121,10 @@ def submit_basket():
 
     if source == "reagents":
         subject = "***TEST REAGENTS REQUEST - PLEASE IGNORE***"
-        recipient = "Purchasing@servitech.co.uk"
+        recipient = "mike@servitech.co.uk"
     else:
         subject = "****TEST PARTS REQUEST - PLEASE IGNORE***"
-        recipient = "StockRequests@servitech.co.uk"
+        recipient = "mike@servitech.co.uk"
 
     msg = Message(subject,
                   recipients=[recipient],
