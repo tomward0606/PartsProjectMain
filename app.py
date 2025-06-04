@@ -103,7 +103,7 @@ def remove_from_basket(part_number):
 
 @app.route('/submit_basket', methods=['POST'])
 def submit_basket():
-    engineer_email = request.form['email']
+    engineer_email = request.form['email_user'].strip() + "@servitech.co.uk"
     comments = request.form.get('comments', '').strip()
     source = request.form.get('source', 'catalogue')
     basket = session.get('basket', {})
@@ -120,11 +120,11 @@ def submit_basket():
         parts_list += f"\n\nComments:\n{comments}"
 
     if source == "reagents":
-        subject = f"***TEST REAGENTS REQUEST FROM {engineer_email} - PLEASE IGNORE***"
-        recipient = "mike@servitech.co.uk"
+        subject = "***TEST REAGENTS REQUEST - PLEASE IGNORE***"
+        recipient = "Purchasing@servitech.co.uk"
     else:
-        subject = f"***TEST PARTS REQUEST FROM {engineer_email} - PLEASE IGNORE***"
-        recipient = "mike@servitech.co.uk"
+        subject = "****TEST PARTS REQUEST - PLEASE IGNORE***"
+        recipient = "StockRequests@servitech.co.uk"
 
     msg = Message(subject,
                   recipients=[recipient],
@@ -151,4 +151,3 @@ def update_quantity(part_number):
 
 if __name__ == '__main__':
     app.run(debug=True)
-
