@@ -82,16 +82,17 @@ def add_to_basket(part_number):
         }
     session['basket'] = basket
 
-    # First, check if this is an AJAX request
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return ('', 204)
-
-    # Otherwise, do a normal redirect
     return redirect(request.referrer or url_for('index'))
 
 @app.route('/basket')
 def view_basket():
     return render_template('basket.html', basket=session.get('basket', {}))
+
+@app.route('/reagents_basket')
+def view_reagents_basket():
+    return render_template('reagents_basket.html', basket=session.get('basket', {}))
 
 @app.route('/remove_from_basket/<path:part_number>')
 def remove_from_basket(part_number):
@@ -103,6 +104,8 @@ def remove_from_basket(part_number):
 @app.route('/submit_basket', methods=['POST'])
 def submit_basket():
     engineer_email = request.form['email']
+    comments = request.form.get('comments', '').strip()
+    source = request.form.get('source', 'catalogue')
     basket = session.get('basket', {})
 
     if not basket or not engineer_email:
@@ -113,8 +116,18 @@ def submit_basket():
         for part_number, item in basket.items()
     ])
 
-    msg = Message('Parts Request',
-                  recipients=['placeholder@gmail.com'],    #### Reciever Email!!!
+    if comments:
+        parts_list += f"\n\nComments:\n{comments}"
+
+    if source == "reagents":
+        subject = "***TEST REAGENTS REQUEST - PLEASE IGNORE***"
+        recipient = "Purchasing@servitech.co.uk"
+    else:
+        subject = "****TEST PARTS REQUEST - PLEASE IGNORE***"
+        recipient = "StockRequests@servitech.co.uk"
+
+    msg = Message(subject,
+                  recipients=[recipient],
                   cc=[engineer_email])
     msg.body = f"Engineer {engineer_email} requests the following parts:\n\n{parts_list}"
     mail.send(msg)
@@ -138,3 +151,4 @@ def update_quantity(part_number):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
