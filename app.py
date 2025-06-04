@@ -120,10 +120,10 @@ def submit_basket():
         parts_list += f"\n\nComments:\n{comments}"
 
     if source == "reagents":
-        subject = "***TEST REAGENTS REQUEST - PLEASE IGNORE***"
+        subject = f"***TEST REAGENTS REQUEST FROM {engineer_email} - PLEASE IGNORE***"
         recipient = "mike@servitech.co.uk"
     else:
-        subject = "****TEST PARTS REQUEST - PLEASE IGNORE***"
+        subject = f"***TEST PARTS REQUEST FROM {engineer_email} - PLEASE IGNORE***"
         recipient = "mike@servitech.co.uk"
 
     msg = Message(subject,
