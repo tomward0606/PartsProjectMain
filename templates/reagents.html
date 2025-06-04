@@ -39,9 +39,6 @@
               <div class="card-body d-flex flex-column">
                 <h5 class="card-title">{{ part.part_number }}</h5>
                 <h6 class="card-subtitle text-muted mb-2">{{ part.description }}</h6>
-                <p class="card-text"><strong>Category:</strong> {{ part.category }}</p>
-                {% if part.make %}
-                  <p class="card-text"><strong>Make:</strong> {{ part.make }}</p>
                 {% endif %}
                 {% if part.manufacturer %}
                   <p class="card-text"><strong>Manufacturer:</strong> {{ part.manufacturer }}</p>
