@@ -9,15 +9,15 @@
 </head>
 <body>
 
-  <header class="sticky-top bg-white">
+  <header class="sticky-top">
     <div class="container-fluid">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="logo-center">
-        <h3>Parts</h3>
+        <h3 class="m-0">Index <span class="badge bg-secondary ms-2">BETA 1.0</span></h3>
         <a href="{{ url_for('view_basket') }}" class="btn btn-success">Basket</a>
       </div>
 
-      <form method="get" class="d-flex flex-nowrap gap-2 mb-3">
+      <form method="get" class="d-flex flex-nowrap gap-2">
         <select name="category" onchange="this.form.submit()" class="form-select category-select">
           <option value="">All Categories</option>
           {% for cat in categories %}
@@ -30,39 +30,35 @@
     </div>
   </header>
 
-  {% if parts %}
-    <div class="container py-4">
-      <div class="row g-3">
-        {% for part in parts %}
-          <div class="col-12 col-md-6">
-            <div class="card h-100 mb-4">
-              <div class="card-body d-flex flex-column">
-                <h5 class="card-title">{{ part.part_number }}</h5>
-                <h6 class="card-subtitle text-muted mb-2">{{ part.description }}</h6>
-                <p class="card-text"><strong>Category:</strong> {{ part.category }}</p>
-                {% if part.make %}
-                  <p class="card-text"><strong>Make:</strong> {{ part.make }}</p>
-                {% endif %}
-                {% if part.manufacturer %}
-                  <p class="card-text"><strong>Manufacturer:</strong> {{ part.manufacturer }}</p>
-                {% endif %}
-                {% if part.image %}
-                  <div class="image-square mb-2">
-                    <img src="{{ url_for('static', filename='images/' + part.image) }}" alt="{{ part.description }}">
-                  </div>
-                {% endif %}
-                <button onclick="addToBasket('{{ part.part_number }}')" class="btn btn-primary mt-auto" type="button">
-                  Add to Basket
-                </button>
-              </div>
+  <div class="container mt-4">
+    <div class="row g-3">
+      {% for part in parts %}
+        <div class="col-12 col-md-6">
+          <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+              <h5 class="card-title">{{ part.part_number }}</h5>
+              <h6 class="card-subtitle text-muted mb-2">{{ part.description }}</h6>
+              <p class="card-text"><strong>Category:</strong> {{ part.category }}</p>
+              {% if part.make %}
+                <p class="card-text"><strong>Make:</strong> {{ part.make }}</p>
+              {% endif %}
+              {% if part.manufacturer %}
+                <p class="card-text"><strong>Manufacturer:</strong> {{ part.manufacturer }}</p>
+              {% endif %}
+              {% if part.image %}
+                <div class="image-square mb-2">
+                  <img src="{{ url_for('static', filename='images/' + part.image) }}" alt="{{ part.description }}">
+                </div>
+              {% endif %}
+              <button onclick="addToBasket('{{ part.part_number }}')" class="btn btn-primary mt-auto" type="button">
+                Add to Basket
+              </button>
             </div>
           </div>
-        {% endfor %}
-      </div>
+        </div>
+      {% endfor %}
     </div>
-  {% else %}
-    <p class="text-center mt-4 text-muted">No items match your search.</p>
-  {% endif %}
+  </div>
 
   <!-- Toast popup -->
   <div id="toast" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999; display: none;">
