@@ -12,7 +12,9 @@
   <header class="sticky-top">
     <div class="container-fluid">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="logo-center">
+        <a href="{{ url_for('landing') }}">
+          <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="logo-center">
+        </a>         
         <h3 class="m-0">Parts</h3>
         <a href="{{ url_for('view_basket') }}" class="btn btn-success">Basket</a>
       </div>
@@ -74,4 +76,3 @@
 
 </body>
 </html>
-
