@@ -11,8 +11,10 @@
   <header class="sticky-top">
     <div class="container-fluid">
       <div class="header-row">
+        <a href="{{ url_for('landing') }}">
+          <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="logo-center">
+        </a>  
         <h3 class="m-0">Reagents Basket</h3>
-        <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="logo-center">
         <a href="{{ url_for('reagents') }}" class="btn btn-secondary">Back to Reagents</a>
       </div>
     </div>
@@ -54,7 +56,7 @@
         <div class="mb-3">
           <label for="email_user" class="form-label">Your Servitech Email</label>
           <div class="input-group">
-            <input type="text" class="form-control" id="email_user" name="email_user" placeholder="e.g. john.smith" required>
+            <input type="text" class="form-control" id="email_user" name="email_user" placeholder="e.g. mike" required>
             <span class="input-group-text">@servitech.co.uk</span>
           </div>
         </div>
