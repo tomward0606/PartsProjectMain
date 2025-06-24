@@ -8,12 +8,13 @@
 </head>
 <body>
   <div class="container text-center mt-5">
-    <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="logo-center mb-4">
+    <a><img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="logo-center"></a>
     <h2>Welcome to the Parts Ordering Portal</h2>
     <p class="mb-4">Please choose an area:</p>
     <div class="d-flex justify-content-center gap-3">
-      <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">Parts</a>
+      <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">Main Catalogue</a>
       <a href="{{ url_for('reagents') }}" class="btn btn-secondary btn-lg">Reagents</a>
+      <a href="{{ url_for('reorder') }}" class="btn btn-outline-primary">Reorder</a>
     </div>
   </div>
 
