@@ -148,7 +148,7 @@ header form {
 
 .logo-button {
   display: inline-block;
-  border: 2px solid #121071;    /* Bootstrap primary blue */
+  border: 2px solid #121071;    
   border-radius: 4px;
   padding: 4px;
   transition: opacity .2s;
