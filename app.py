@@ -131,18 +131,28 @@ def remove_from_basket(part_number):
 
 @app.route('/update_quantity/<path:part_number>', methods=['POST'])
 def update_quantity(part_number):
-    quantity = int(request.form['quantity'])
+    # Grab the new quantity from the form
+    try:
+        new_qty = int(request.form.get('quantity', 0))
+    except ValueError:
+        new_qty = 0
+
     basket = session.get('basket', {})
-    if part_number in basket:
-        if quantity <= 0:
-            basket.pop(part_number)
-        else:
-            basket[part_number]['quantity'] = quantity
+
+    if new_qty <= 0:
+        # Remove item if quantity zero or invalid
+        basket.pop(part_number, None)
+    else:
+        # Update to the new quantity
+        if part_number in basket:
+            basket[part_number]['quantity'] = new_qty
+
+    # Save back into session
     session['basket'] = basket
-    ref = request.referrer or ''
-    if 'reagents_basket' in ref:
-        return redirect(url_for('view_reagents_basket'))
-    return redirect(url_for('view_basket'))
+
+    # Redirect back to the reagents basket
+    return redirect(url_for('view_reagents_basket'))
+
 
 @app.route('/submit_basket', methods=['POST'])
 def submit_basket():
