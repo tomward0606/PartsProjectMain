@@ -207,13 +207,17 @@ def reorder():
             .all()
         )
         for order in results:
-            # always format datetime to drop microseconds
-            date_str = order.date.strftime("%Y-%m-%d %H:%M:%S")
+            # Normalize date to datetime format string
+            if isinstance(order.date, str):
+                # strip off any fractional seconds if present
+                date_clean = order.date.split('.')[0]
+            else:
+                date_clean = order.date.strftime("%Y-%m-%d %H:%M:%S")
             items_list = [
                 {"part_number": item.part_number, "description": item.description, "quantity": item.quantity}
                 for item in order.items
             ]
-            orders.append({"date": date_str, "items": items_list})
+            orders.append({"date": date_clean, "items": items_list})
 
     return render_template('reorder.html', email=full_email, orders=orders)
 
