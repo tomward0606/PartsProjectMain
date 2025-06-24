@@ -146,6 +146,17 @@ header form {
   object-fit: contain;
 }
 
+.logo-button {
+  display: inline-block;
+  border: 2px solid #007bff;    /* Bootstrap primary blue */
+  border-radius: 4px;
+  padding: 4px;
+  transition: opacity .2s;
+}
+.logo-button:hover {
+  opacity: 0.8;
+  cursor: pointer;
+}
 
 /* Image styles */
 .image-square {
