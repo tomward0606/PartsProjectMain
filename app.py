@@ -191,6 +191,7 @@ def submit_basket():
     flash("Your order has been sent!", "success")
     return render_template('confirmation.html')
 
+
 @app.route('/reorder', methods=['GET', 'POST'])
 def reorder():
     email = request.form.get('email_user') if request.method == 'POST' else None
@@ -198,10 +199,19 @@ def reorder():
     orders = []
 
     if full_email:
-        results = (ReagentOrder.query.filter_by(email=full_email.lower()).order_by(ReagentOrder.date.desc()).limit(2).all())
+        results = (
+            ReagentOrder.query
+            .filter_by(email=full_email.lower())
+            .order_by(ReagentOrder.date.desc())
+            .limit(2)
+            .all()
+        )
         for order in results:
-            items_list = [{"part_number": item.part_number, "description": item.description, "quantity": item.quantity} for item in order.items]
-            date_str = order.date.strftime("%Y-%m-%d %H:%M") if isinstance(order.date, datetime) else order.date
+            items_list = [
+                {"part_number": item.part_number, "description": item.description, "quantity": item.quantity}
+                for item in order.items
+            ]
+            date_str = order.date.strftime("%Y-%m-%d %H:%M:%S") if isinstance(order.date, datetime) else order.date
             orders.append({"date": date_str, "items": items_list})
 
     return render_template('reorder.html', email=full_email, orders=orders)
@@ -210,15 +220,31 @@ def reorder():
 def reorder_submit():
     email = request.form.get('email')
     idx = int(request.form.get('order_index', 0))
-    orders = ReagentOrder.query.filter_by(email=email.lower()).order_by(ReagentOrder.date.desc()).limit(2).all()
+    orders = (
+        ReagentOrder.query
+        .filter_by(email=email.lower())
+        .order_by(ReagentOrder.date.desc())
+        .limit(2)
+        .all()
+    )
     if idx >= len(orders):
         flash("Invalid reorder index.", "danger")
         return redirect(url_for('reorder'))
     sel = orders[idx]
     lines = [f"{i.part_number} – {i.description} x{i.quantity}" for i in sel.items]
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
-    body = f"Engineer {email} reorders:\n\n" + "\n".join(lines) + f"\n\n[Reordered on {timestamp}]"
-    msg = Message(subject=f"***TEST REAGENTS REQUEST FROM {email}***", recipients=["Purchasing@servitech.co.uk"], cc=[email], body=body)
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    body = f"Engineer {email} reorders:
+
+" + "
+".join(lines) + f"
+
+[Reordered on {timestamp}]"
+    msg = Message(
+        subject=f"***TEST REAGENTS REQUEST FROM {email}***",
+        recipients=["Purchasing@servitech.co.uk"],
+        cc=[email],
+        body=body
+    )
     mail.send(msg)
     flash("Reorder sent!", "success")
     return render_template('confirmation.html')
