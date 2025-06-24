@@ -233,12 +233,7 @@ def reorder_submit():
     sel = orders[idx]
     lines = [f"{i.part_number} – {i.description} x{i.quantity}" for i in sel.items]
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    body = f"Engineer {email} reorders:
-
-" + "
-".join(lines) + f"
-
-[Reordered on {timestamp}]"
+    body = f"Engineer {email} reorders:\n\n" + "\n".join(lines) + f"\n\n[Reordered on {timestamp}]"
     msg = Message(
         subject=f"***TEST REAGENTS REQUEST FROM {email}***",
         recipients=["Purchasing@servitech.co.uk"],
