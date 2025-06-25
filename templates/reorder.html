@@ -47,12 +47,13 @@
           </ul>
 
           <div class="d-flex gap-2">
-            <!-- Reorder now -->
+            
+            <!-- Reorder now
             <form method="post" action="{{ url_for('reorder_submit') }}">
               <input type="hidden" name="email" value="{{ email }}">
               <input type="hidden" name="order_index" value="{{ loop.index0 }}">
               <button type="submit" class="btn btn-success btn-sm">Reorder This</button>
-            </form>
+            </form>  -->
 
             <!-- Add to basket -->
             <form method="post" action="{{ url_for('reorder_to_basket') }}">
