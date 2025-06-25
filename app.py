@@ -172,10 +172,10 @@ def submit_basket():
     body_text = f"Engineer {engineer_email} requests:\n\n" + "\n".join(lines)
 
     if source == "reagents":
-        subject = f"***TEST REAGENTS REQUEST FROM {engineer_email}***"
+        subject = f"REAGENTS REQUEST FROM {engineer_email}"
         recipients = ["Purchasing@servitech.co.uk"]
     else:
-        subject = f"****TEST PARTS REQUEST FROM {engineer_email}***"
+        subject = f"PARTS REQUEST FROM {engineer_email}"
         recipients = ["StockRequests@servitech.co.uk"]
 
     msg = Message(subject, recipients=recipients, cc=[engineer_email], body=body_text)
