@@ -1,33 +1,32 @@
-/* Base layout */
 body {
   margin: 0;
   padding: 0;
-  background-color: #f8f9fa;
-  color: #212529;
+  background-color: #f2f2f8; /* lightened neutral background */
+  color: #2e2d3c; /* dark muted text */
   font-family: "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
 h3, h5, h6 {
-  color: #000;
+  color: #13117c; /* main dark blue */
   margin-bottom: 0.5rem;
 }
 
 /* Card layout */
 .card {
   background-color: #ffffff;
-  border: 1px solid #ced4da;
+  border: 1px solid #7f7b89; /* muted purple border */
   border-radius: 0.375rem;
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 0 8px rgba(19, 17, 124, 0.1); /* subtle dark blue shadow */
   transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card:hover {
-  border-color: #6c757d;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.1);
+  border-color: #13117c;
+  box-shadow: 0 0 14px rgba(19, 17, 124, 0.3);
 }
 
 .card-title, .card-subtitle, .card-text {
-  color: #212529;
+  color: #2e2d3c;
 }
 
 /* Buttons */
@@ -37,56 +36,61 @@ h3, h5, h6 {
   transition: all 0.2s ease;
 }
 
+/* Primary button - dark blue */
 .btn-primary {
-  background-color: #0e1178;
+  background-color: #13117c;
   color: #fff;
   border: none;
 }
 
 .btn-primary:hover {
-  background-color: #0b5ed7;
+  background-color: #0d0b59; /* darker shade */
 }
 
+/* Danger button - a muted purple red for contrast */
 .btn-danger {
-  background-color: #dc3545;
+  background-color: #a34d6d;
   color: #fff;
   border: none;
 }
 
 .btn-danger:hover {
-  background-color: #bb2d3b;
+  background-color: #7f3a54;
 }
 
+/* Success button - main muted purple */
 .btn-success {
   background-color: #7f7b89;
+  color: #fff;
   border: none;
 }
 
 .btn-success:hover {
-  background-color: #4f4d55;
+  background-color: #5c5962;
 }
 
+/* Secondary button - lighter dark blue */
 .btn-secondary {
-  background-color: #0d1b2a;
+  background-color: #32326b;
   color: #fff;
   border: none;
 }
 
 .btn-secondary:hover {
-  background-color: #1b2a41;
+  background-color: #4a487e;
 }
 
 /* Form inputs */
 .form-control,
 .form-select {
   background-color: #fff;
-  color: #212529;
-  border: 1px solid #ced4da;
+  color: #2e2d3c;
+  border: 1px solid #7f7b89;
   border-radius: 0.375rem;
 }
 
 .form-control::placeholder {
-  color: #6c757d;
+  color: #9a97a1;
 }
 
 /* Spacing tweaks */
@@ -101,8 +105,8 @@ h3, h5, h6 {
 /* Sticky header (clean and compact) */
 header.sticky-top {
   background-color: #ffffff;
-  border-bottom: 1px solid #ddd;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid #7f7b89;
+  box-shadow: 0 1px 4px rgba(19, 17, 124, 0.1);
   position: sticky;
   top: 0;
   z-index: 1030;
@@ -123,7 +127,7 @@ header .container-fluid {
 }
 
 header h3 {
-  color: #000 !important;
+  color: #13117c !important;
   margin: 0;
 }
 
@@ -148,11 +152,12 @@ header form {
 
 .logo-button {
   display: inline-block;
-  border: 2px solid #121071;    
+  border: 2px solid #13117c;
   border-radius: 4px;
   padding: 4px;
   transition: opacity .2s;
 }
+
 .logo-button:hover {
   opacity: 0.8;
   cursor: pointer;
@@ -164,7 +169,7 @@ header form {
   aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 0.375rem;
-  background-color: #f0f0f0;
+  background-color: #e6e5eb; /* soft muted background */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -175,3 +180,4 @@ header form {
   max-height: 100%;
   object-fit: contain;
 }
+
