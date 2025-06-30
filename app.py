@@ -128,7 +128,6 @@ def remove_from_basket(part_number):
     if 'reagents_basket' in ref:
         return redirect(url_for('view_reagents_basket'))
     return redirect(url_for('view_basket'))
-
 @app.route('/update_quantity/<path:part_number>', methods=['POST'])
 def update_quantity(part_number):
     # Grab the new quantity from the form
@@ -150,8 +149,13 @@ def update_quantity(part_number):
     # Save back into session
     session['basket'] = basket
 
-    # Redirect back to the reagents basket
-    return redirect(url_for('view_reagents_basket'))
+    # Redirect back to the correct page based on where you came from
+    ref = request.referrer or ''
+    if 'reagents_basket' in ref:
+        return redirect(url_for('view_reagents_basket'))
+    else:
+        return redirect(url_for('view_basket'))
+
 
 
 @app.route('/submit_basket', methods=['POST'])
