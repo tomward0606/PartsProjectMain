@@ -25,13 +25,13 @@
                 {% endfor %}
             </select>
             <div class="input-group">
-                <input type="text" name="search" value="{{ search }}" placeholder="Search parts..." class="form-control" list="search-suggestions">
+                <input type="text" name="search" value="{{ search }}" placeholder="Search parts..." class="form-control" list="search-suggestions" onkeypress="if(event.key === 'Enter') this.form.submit();">
                 <datalist id="search-suggestions">
                     {% for part in parts %}
                         <option value="{{ part.part_number }}">{{ part.description }}</option>
                     {% endfor %}
                 </datalist>
-                <button type="submit" class="btn btn-primary">Search</button>
+                <button type="submit" class="btn btn-primary" onclick="this.form.submit();">Search</button>
             </div>
         </form>
     </div>
@@ -78,6 +78,14 @@
       </div>
     </div>
   </div>
+
+<script>
+    document.querySelector('form').addEventListener('submit', function(event) {
+        const searchInput = document.querySelector('input[name="search"]');
+        const normalizedSearch = searchInput.value.trim().toLowerCase(); // Normalize input
+        searchInput.value = encodeURIComponent(normalizedSearch); // Encode for special characters
+    });
+</script>
 
 </body>
 </html>
