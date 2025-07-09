@@ -64,29 +64,44 @@ def get_categories(parts):
 def landing():
     return render_template('landing.html')
 
+
 @app.route('/catalogue')
 def index():
     parts = [p for p in parts_db if 'reagent' not in p['category'].lower()]
     category = request.args.get('category')
-    search = request.args.get('search', '').lower()
-    filtered_parts = [p for p in parts if
-                      (not category or p['category'] == category) and
-                      (search in p['description'].lower() or search in p['make'].lower() or search in p['manufacturer'].lower())]
+    search = request.args.get('search', '').strip().lower()
+
+    filtered_parts = [
+        p for p in parts if
+        (not category or p['category'] == category) and
+        (search in p['part_number'].lower() or
+         search in p['description'].lower() or
+         search in p['make'].lower() or
+         search in p['manufacturer'].lower())
+    ] if search else [
+        p for p in parts if not category or p['category'] == category
+    ]
+
     return render_template('index.html', parts=filtered_parts,
                            categories=get_categories(parts),
                            selected_category=category, search=search)
 
+
 @app.route('/reagents')
 def reagents():
     parts = [p for p in parts_db if 'reagent' in p['category'].lower()]
-    category = request.args.get('category')
-    search = request.args.get('search', '').lower()
-    filtered_parts = [p for p in parts if
-                      (not category or p['category'] == category) and
-                      (search in p['description'].lower() or search in p['make'].lower() or search in p['manufacturer'].lower())]
-    return render_template('reagents.html', parts=filtered_parts,
-                           categories=get_categories(parts),
-                           selected_category=category, search=search)
+    search = request.args.get('search', '').strip().lower()
+
+    filtered_parts = [
+        p for p in parts if
+        (search in p['part_number'].lower() or
+         search in p['description'].lower() or
+         search in p['make'].lower() or
+         search in p['manufacturer'].lower())
+    ] if search else parts
+
+    return render_template('reagents.html', parts=filtered_parts, search=search)
+
 
 @app.route('/basket')
 def view_basket():
