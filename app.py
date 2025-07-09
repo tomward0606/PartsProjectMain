@@ -182,11 +182,23 @@ def submit_basket():
         flash("Your basket is empty or email missing", "warning")
         return redirect(url_for('view_reagents_basket' if source == 'reagents' else 'view_basket'))
 
-    lines = [f"{pnum} – {item['description']} x{item['quantity']}" for pnum, item in basket.items()]
+    # Build list of formatted item lines with bullet points
+    lines = [
+        f"• Part Number: {pnum}\n  Description: {item['description']}\n  Quantity: {item['quantity']}"
+        for pnum, item in basket.items()
+    ]
+
     comments = request.form.get('comments', '').strip()
     if comments:
         lines.append("\nComments:\n" + comments)
-    body_text = f"Engineer {engineer_email} requests:\n\n" + "\n".join(lines)
+
+    body_text = (
+        f"Engineer: {engineer_email}\n"
+        f"Request Date: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+        "Requested Items:\n\n"
+        + "\n\n".join(lines)
+        + "\n"
+    )
 
     if source == "reagents":
         subject = f"REAGENTS REQUEST FROM {engineer_email}"
@@ -200,7 +212,13 @@ def submit_basket():
 
     new_order = ReagentOrder(email=engineer_email, date=datetime.utcnow())
     for pnum, item in basket.items():
-        new_order.items.append(ReagentOrderItem(part_number=pnum, description=item['description'], quantity=item['quantity']))
+        new_order.items.append(
+            ReagentOrderItem(
+                part_number=pnum,
+                description=item['description'],
+                quantity=item['quantity']
+            )
+        )
     db.session.add(new_order)
     db.session.commit()
 
