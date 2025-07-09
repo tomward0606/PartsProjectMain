@@ -33,11 +33,6 @@
             {% if item.manufacturer %}
               <p><strong>Manufacturer:</strong> {{ item.manufacturer }}</p>
             {% endif %}
-            {% if item.image %}
-              <div class="image-square mb-2">
-                <img src="{{ url_for('static', filename='images/' + item.image) }}" alt="{{ item.description }}">
-              </div>
-            {% endif %}
 
             <div class="row g-2 align-items-center mt-3">
               <div class="col-auto">
