@@ -15,7 +15,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Initialize database
 db = SQLAlchemy(app)
 
-# Models
+### --- Models --- ###
 class ReagentOrder(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), nullable=False)
@@ -29,7 +29,7 @@ class ReagentOrderItem(db.Model):
     description = db.Column(db.String(256))
     quantity = db.Column(db.Integer)
 
-# Mail config
+### --- Mail Config --- ### 
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
@@ -39,7 +39,7 @@ app.config['MAIL_USE_SSL'] = False
 app.config['MAIL_DEFAULT_SENDER'] = 'tomtest0606@gmail.com'
 mail = Mail(app)
 
-# Load parts from CSV
+### --- Load parts from CSV --- ###
 disabled_import = False # placeholder to avoid linter errors
 parts_db = []
 with open('parts.csv', newline='', encoding='cp1252') as csvfile:
@@ -59,12 +59,12 @@ with open('parts.csv', newline='', encoding='cp1252') as csvfile:
 def get_categories(parts):
     return sorted({part['category'] for part in parts})
 
-# Routes
+### --- APP ROUTES ---- ###
 @app.route('/')
 def landing():
     return render_template('landing.html')
 
-
+### --- Catalogue --- ###
 @app.route('/catalogue')
 def index():
     parts = [p for p in parts_db if 'reagent' not in p['category'].lower()]
@@ -86,7 +86,7 @@ def index():
                            categories=get_categories(parts),
                            selected_category=category, search=search)
 
-
+### --- Reagents --- ###
 @app.route('/reagents')
 def reagents():
     parts = [p for p in parts_db if 'reagent' in p['category'].lower()]
@@ -102,7 +102,7 @@ def reagents():
 
     return render_template('reagents.html', parts=filtered_parts, search=search)
 
-
+### --- Basket Routes --- ###
 @app.route('/basket')
 def view_basket():
     return render_template('basket.html', basket=session.get('basket', {}))
@@ -171,8 +171,6 @@ def update_quantity(part_number):
     else:
         return redirect(url_for('view_basket'))
 
-
-
 @app.route('/submit_basket', methods=['POST'])
 def submit_basket():
     engineer_name = request.form['email_user'].strip()
@@ -210,7 +208,7 @@ def submit_basket():
     flash("Your order has been sent!", "success")
     return render_template('confirmation.html')
 
-
+### --- Reorder --- ###
 @app.route('/reorder', methods=['GET', 'POST'])
 def reorder():
     email = request.form.get('email_user') if request.method == 'POST' else None
