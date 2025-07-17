@@ -6,9 +6,10 @@ import os
 import csv
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY')
+app.secret_key = 'dev-secret-key-change-me'
+
 # PostgreSQL on Render (external address)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://servitech_db_user:79U6KaAxlHdUfOeEt1iVDc65KXFLPie2@dpg-d1ckf9ur433s73fti9p0-a.oregon-postgres.render.com/servitech_db'
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -29,11 +30,30 @@ class ReagentOrderItem(db.Model):
     description = db.Column(db.String(256))
     quantity = db.Column(db.Integer)
 
+
+class PartsOrder(db.Model):
+    __tablename__ = 'parts_order'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False)
+    date = db.Column(db.DateTime, default=datetime.utcnow)
+    status = db.Column(db.String(20), nullable=True)
+    items = db.relationship("PartsOrderItem", backref="order", cascade="all, delete-orphan")
+
+class PartsOrderItem(db.Model):
+    __tablename__ = 'parts_order_item'
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('parts_order.id'), nullable=False)
+    part_number = db.Column(db.String(64))
+    description = db.Column(db.String(256))
+    quantity = db.Column(db.Integer)
+    quantity_sent = db.Column(db.Integer, default=0)
+
+
 ### --- Mail Config --- ### 
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_USERNAME'] = 'tomtest0606@gmail.com'
+app.config['MAIL_PASSWORD'] = 'rdtoyqqxoolahscc'
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USE_SSL'] = False
 app.config['MAIL_DEFAULT_SENDER'] = 'tomtest0606@gmail.com'
@@ -102,10 +122,11 @@ def reagents():
 
     return render_template('reagents.html', parts=filtered_parts, search=search)
 
+
 ### --- Basket Routes --- ###
-@app.route('/basket')
-def view_basket():
-    return render_template('basket.html', basket=session.get('basket', {}))
+@app.route('/parts_basket')
+def view_parts_basket():
+    return render_template('parts_basket.html', basket=session.get('basket', {}))
 
 @app.route('/reagents_basket')
 def view_reagents_basket():
@@ -142,10 +163,10 @@ def remove_from_basket(part_number):
     ref = request.referrer or ''
     if 'reagents_basket' in ref:
         return redirect(url_for('view_reagents_basket'))
-    return redirect(url_for('view_basket'))
+    return redirect(url_for('view_parts_basket'))
+
 @app.route('/update_quantity/<path:part_number>', methods=['POST'])
 def update_quantity(part_number):
-    # Grab the new quantity from the form
     try:
         new_qty = int(request.form.get('quantity', 0))
     except ValueError:
@@ -154,22 +175,18 @@ def update_quantity(part_number):
     basket = session.get('basket', {})
 
     if new_qty <= 0:
-        # Remove item if quantity zero or invalid
         basket.pop(part_number, None)
     else:
-        # Update to the new quantity
         if part_number in basket:
             basket[part_number]['quantity'] = new_qty
 
-    # Save back into session
     session['basket'] = basket
 
-    # Redirect back to the correct page based on where you came from
     ref = request.referrer or ''
     if 'reagents_basket' in ref:
         return redirect(url_for('view_reagents_basket'))
     else:
-        return redirect(url_for('view_basket'))
+        return redirect(url_for('view_parts_basket'))
 
 @app.route('/submit_basket', methods=['POST'])
 def submit_basket():
@@ -180,9 +197,8 @@ def submit_basket():
 
     if not basket or not engineer_email:
         flash("Your basket is empty or email missing", "warning")
-        return redirect(url_for('view_reagents_basket' if source == 'reagents' else 'view_basket'))
+        return redirect(url_for('view_reagents_basket' if source == 'reagents' else 'view_parts_basket'))
 
-    # Build list of formatted item lines with bullet points
     lines = [
         f"• Part Number: {pnum}\n  Description: {item['description']}\n  Quantity: {item['quantity']}"
         for pnum, item in basket.items()
@@ -195,9 +211,7 @@ def submit_basket():
     body_text = (
         f"Engineer: {engineer_email}\n"
         f"Request Date: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
-        "Requested Items:\n\n"
-        + "\n\n".join(lines)
-        + "\n"
+        "Requested Items:\n\n" + "\n\n".join(lines) + "\n"
     )
 
     if source == "reagents":
@@ -210,21 +224,34 @@ def submit_basket():
     msg = Message(subject, recipients=recipients, cc=[engineer_email], body=body_text)
     mail.send(msg)
 
-    new_order = ReagentOrder(email=engineer_email, date=datetime.utcnow())
-    for pnum, item in basket.items():
-        new_order.items.append(
-            ReagentOrderItem(
-                part_number=pnum,
-                description=item['description'],
-                quantity=item['quantity']
+    if source == 'reagents':
+        new_order = ReagentOrder(email=engineer_email, date=datetime.utcnow())
+        for pnum, item in basket.items():
+            new_order.items.append(
+                ReagentOrderItem(
+                    part_number=pnum,
+                    description=item['description'],
+                    quantity=item['quantity']
+                )
             )
-        )
+    else:
+        new_order = PartsOrder(email=engineer_email, date=datetime.utcnow())
+        for pnum, item in basket.items():
+            new_order.items.append(
+                PartsOrderItem(
+                    part_number=pnum,
+                    description=item['description'],
+                    quantity=item['quantity']
+                )
+            )
+
     db.session.add(new_order)
     db.session.commit()
 
     session['basket'] = {}
     flash("Your order has been sent!", "success")
     return render_template('confirmation.html')
+
 
 ### --- Reorder --- ###
 @app.route('/reorder', methods=['GET', 'POST'])
@@ -306,3 +333,4 @@ def reorder_to_basket():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
