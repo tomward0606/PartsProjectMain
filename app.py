@@ -6,11 +6,8 @@ import os
 import csv
 
 app = Flask(__name__)
-app.secret_key = 'dev-secret-key-change-me'
-
-# PostgreSQL on Render (external address)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://servitech_db_user:79U6KaAxlHdUfOeEt1iVDc65KXFLPie2@dpg-d1ckf9ur433s73fti9p0-a.oregon-postgres.render.com/servitech_db'
-
+app.secret_key = os.environ.get('SECRET_KEY', 'fallback-dev-key')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database
