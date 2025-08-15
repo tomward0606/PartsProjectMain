@@ -18,19 +18,19 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fallback-dev-key")
 
 # DB: use env var if present, otherwise fall back to your Render Postgres
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://servitech_db_user:79U6KaAxlHdUfOeEt1iVDc65KXFLPie2@dpg-d1ckf9ur433s73fti9p0-a.oregon-postgres.render.com/servitech_db"
-)
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ["DATABASE_URL"]
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Mail (use your new stock Gmail + app password)
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
 app.config["MAIL_PORT"] = 587
 app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = "servitech.stock@gmail.com"
-app.config["MAIL_PASSWORD"] = "qmorqthzpbxqnkrp"  # consider env var in prod
-app.config["MAIL_DEFAULT_SENDER"] = ("Servitech Stock", "servitech.stock@gmail.com")
+app.config["MAIL_USERNAME"] = os.environ["MAIL_USERNAME"]
+app.config["MAIL_PASSWORD"] = os.environ["MAIL_PASSWORD"]
+app.config["MAIL_DEFAULT_SENDER"] = (
+    os.environ.get("MAIL_DEFAULT_NAME", "Servitech Stock"),
+    os.environ.get("MAIL_DEFAULT_EMAIL", os.environ["MAIL_USERNAME"]),
+)
 
 db = SQLAlchemy(app)
 mail = Mail(app)
@@ -454,3 +454,4 @@ def my_orders():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
