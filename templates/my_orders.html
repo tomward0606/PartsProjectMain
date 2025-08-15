@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Orders{% if email %} – {{ email }}{% endif %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .progress { height: 8px; }
+    .table thead th { white-space: nowrap; }
+  </style>
+</head>
+<body class="p-4 bg-light">
+  <div class="container bg-white p-4 shadow rounded">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="mb-0">My Orders</h2>
+      <a href="{{ url_for('landing') }}" class="btn btn-outline-secondary">Home</a>
+    </div>
+
+    <!-- Email entry -->
+    <form class="row gy-2 gx-2 align-items-end mb-4" method="get" action="{{ url_for('my_orders') }}">
+      <div class="col-md-6">
+        <label for="email" class="form-label">Your email</label>
+        <input type="email" class="form-control" id="email" name="email"
+               placeholder="engineer@servitech.co.uk" value="{{ email or '' }}" required>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-primary w-100" type="submit">View</button>
+      </div>
+    </form>
+
+    {% if email %}
+      <!-- Active Orders -->
+      <div class="card mb-4">
+        <div class="card-header bg-warning"><strong>Active Orders (Not Fully Sent)</strong></div>
+        <div class="card-body">
+          {% if active_orders %}
+            <table class="table table-sm table-bordered align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Order Date</th>
+                  <th>Part Number</th>
+                  <th>Description</th>
+                  <th class="text-end">Ordered</th>
+                  <th class="text-end">Sent</th>
+                  <th class="text-end">Remaining</th>
+                  <th style="width:160px">Progress</th>
+                  <th>Last Dispatched</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in active_orders %}
+                  {% set ordered = (item.quantity or 0) %}
+                  {% set sent = (item.quantity_sent or 0) %}
+                  {% set remaining = ordered - sent %}
+                  {% set pct = (sent * 100 // ordered) if ordered > 0 else 0 %}
+                  {% set lastd = last_dispatch_for_part.get(item.part_number) %}
+                  <tr>
+                    <td>{{ item.order.date.strftime('%d %b %Y') }}</td>
+                    <td>{{ item.part_number }}</td>
+                    <td>{{ item.description }}</td>
+                    <td class="text-end">{{ ordered }}</td>
+                    <td class="text-end">{{ sent }}</td>
+                    <td class="text-end">{{ remaining }}</td>
+                    <td>
+                      <div class="progress">
+                        <div class="progress-bar" role="progressbar"
+                             style="width: {{ pct }}%;" aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                      </div>
+                      <small class="text-muted">{{ sent }}/{{ ordered }}</small>
+                    </td>
+                    <td>
+                      {% if lastd %}{{ lastd.strftime('%d %b %Y %H:%M') }}{% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="text-muted mb-0">No active orders.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Sent Items (Last 7 Days) - from Dispatches -->
+      <div class="card mb-4">
+        <div class="card-header bg-info text-white"><strong>Sent Items (Last 7 Days)</strong></div>
+        <div class="card-body">
+          {% if recent_dispatches %}
+            <table class="table table-sm table-bordered">
+              <thead class="table-light">
+                <tr>
+                  <th>Dispatch Date</th>
+                  <th>Part Number</th>
+                  <th>Description</th>
+                  <th class="text-end">Qty Sent (last 7 days)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in recent_dispatches %}
+                <tr>
+                  <td>{{ row.dispatch_date.strftime('%d %b %Y %H:%M') }}</td>
+                  <td>{{ row.part_number }}</td>
+                  <td>{{ row.description or '' }}</td>
+                  <td class="text-end">{{ row.qty_sent }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            <p class="text-muted small mb-0">
+              Note: This shows what was picked in the last 7 days. For remaining quantities, see “Active Orders” above.
+            </p>
+          {% else %}
+            <p class="text-muted mb-0">No items dispatched in the last 7 days.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Sent Items (Over 7 Days Ago) - from Dispatches -->
+      <div class="card">
+        <div class="card-header bg-secondary text-white"><strong>Sent Items (Over 7 Days Ago)</strong></div>
+        <div class="card-body">
+          {% if older_dispatches %}
+            <table class="table table-sm table-bordered">
+              <thead class="table-light">
+                <tr>
+                  <th>Dispatch Date</th>
+                  <th>Part Number</th>
+                  <th>Description</th>
+                  <th class="text-end">Qty Sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in older_dispatches %}
+                <tr>
+                  <td>{{ row.dispatch_date.strftime('%d %b %Y %H:%M') }}</td>
+                  <td>{{ row.part_number }}</td>
+                  <td>{{ row.description or '' }}</td>
+                  <td class="text-end">{{ row.qty_sent }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="text-muted mb-0">No older dispatched items.</p>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>
