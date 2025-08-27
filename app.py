@@ -12,28 +12,43 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
 from sqlalchemy import desc, func
+from typing import Set  
+
 
 # ── App & Config ──────────────────────────────────────────────────────────────
-app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "fallback-dev-key")
+# ── App & Config (LOCAL HARD-CODED) ────────────────────────────────────────────
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail
 
-# DB: use env var if present, otherwise fall back to your Render Postgres
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ["DATABASE_URL"]
+app = Flask(__name__)
+
+# Simple dev secret key
+app.secret_key = "fallback-dev-key"
+
+# Database: hard-coded Render external URL (requires SSL)
+app.config["SQLALCHEMY_DATABASE_URI"] = (
+    "postgresql://servitech_db_user:"
+    "79U6KaAxlHdUfOeEt1iVDc65KXFLPie2"
+    "@dpg-d1ckf9ur433s73fti9p0-a.oregon-postgres.render.com"
+    "/servitech_db?sslmode=require"
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Mail (use your new stock Gmail + app password)
+# Mail (Gmail via App Password) — set your test creds here
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
 app.config["MAIL_PORT"] = 587
 app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = os.environ["MAIL_USERNAME"]
-app.config["MAIL_PASSWORD"] = os.environ["MAIL_PASSWORD"]
-app.config["MAIL_DEFAULT_SENDER"] = (
-    os.environ.get("MAIL_DEFAULT_NAME", "Servitech Stock"),
-    os.environ.get("MAIL_DEFAULT_EMAIL", os.environ["MAIL_USERNAME"]),
-)
+app.config["MAIL_USERNAME"] = "your.address@gmail.com"            # ← change me
+app.config["MAIL_PASSWORD"] = "your_16_char_app_password"         # ← change me
+app.config["MAIL_DEFAULT_SENDER"] = ("Servitech Stock", app.config["MAIL_USERNAME"])
+
+# Suppress sending during local dev to avoid crashes / real emails
+app.config["MAIL_SUPPRESS_SEND"] = True  # flip to False when you want real emails
 
 db = SQLAlchemy(app)
 mail = Mail(app)
+
 
 # ── Models ────────────────────────────────────────────────────────────────────
 # Reagents (existing)
@@ -67,6 +82,7 @@ class PartsOrderItem(db.Model):
     description = db.Column(db.String(256))
     quantity = db.Column(db.Integer)
     quantity_sent = db.Column(db.Integer, default=0)
+    back_order = db.Column(db.Boolean, nullable=False, default=False)
 
 # Dispatch tables (from Stock System) — needed for “Sent last 7 days”
 class DispatchNote(db.Model):
@@ -84,6 +100,22 @@ class DispatchItem(db.Model):
     part_number = db.Column(db.String(64))
     quantity_sent = db.Column(db.Integer)
     description = db.Column(db.String(256))
+
+class HiddenPart(db.Model):
+    __tablename__ = "hidden_part"
+    part_number = db.Column(db.String, primary_key=True)
+
+#-- helper for hiding parts (not currently used)
+
+PART_NUMBER_KEY = "Product Code"  # match your CSV header exactly
+
+def norm_pn(s: str) -> str:
+    return (s or "").strip().upper()
+
+def get_hidden_part_numbers() -> Set[str]:
+    rows = db.session.query(HiddenPart.part_number).all()
+    return {norm_pn(pn) for (pn,) in rows}
+
 
 # ── CSV catalogue load ────────────────────────────────────────────────────────
 parts_db = []
@@ -174,47 +206,63 @@ def landing():
 # Catalogue (Parts)
 @app.route("/catalogue")
 def index():
-    parts = [p for p in parts_db if "reagent" not in p["category"].lower()]
+    # 1) Base list: non-reagents from parts_db
+    base = [p for p in parts_db if "reagent" not in (p.get("category", "").lower())]
+
+    # 2) Exclude hidden product codes
+    hidden = get_hidden_part_numbers()  # set[str], uppercased
+    parts = [p for p in base if norm_pn(p.get("part_number", "")) not in hidden]
+
+    # 3) Existing filters
     category = request.args.get("category")
-    search = request.args.get("search", "").strip().lower()
+    search = (request.args.get("search") or "").strip().lower()
 
     if search:
         filtered = [
-            p for p in parts if
-            (not category or p["category"] == category) and (
-                search in p["part_number"].lower() or
-                search in p["description"].lower() or
-                search in p["make"].lower() or
-                search in p["manufacturer"].lower()
+            p for p in parts
+            if (not category or p.get("category") == category) and (
+                search in (p.get("part_number", "").lower()) or
+                search in (p.get("description", "").lower()) or
+                search in (p.get("make", "").lower()) or
+                search in (p.get("manufacturer", "").lower())
             )
         ]
     else:
-        filtered = [p for p in parts if not category or p["category"] == category]
+        filtered = [p for p in parts if not category or p.get("category") == category]
 
     return render_template(
         "index.html",
         parts=filtered,
-        categories=get_categories(parts),
+        categories=get_categories(parts),  # categories built from visible items
         selected_category=category,
-        search=search
+        search=search,
     )
+
 
 # Catalogue (Reagents)
 @app.route("/reagents")
 def reagents():
-    parts = [p for p in parts_db if "reagent" in p["category"].lower()]
-    search = request.args.get("search", "").strip().lower()
+    # 1) Base list: reagents only
+    base = [p for p in parts_db if "reagent" in (p.get("category", "").lower())]
+
+    # 2) Exclude hidden product codes
+    hidden = get_hidden_part_numbers()
+    parts = [p for p in base if norm_pn(p.get("part_number", "")) not in hidden]
+
+    # 3) Existing search
+    search = (request.args.get("search") or "").strip().lower()
     if search:
         filtered = [
             p for p in parts if (
-                search in p["part_number"].lower() or
-                search in p["description"].lower() or
-                search in p["make"].lower() or
-                search in p["manufacturer"].lower()
+                search in (p.get("part_number", "").lower()) or
+                search in (p.get("description", "").lower()) or
+                search in (p.get("make", "").lower()) or
+                search in (p.get("manufacturer", "").lower())
             )
         ]
     else:
         filtered = parts
+
     return render_template("reagents.html", parts=filtered, search=search)
 
 # Basket views
@@ -414,40 +462,97 @@ def reorder_to_basket():
     return redirect(url_for("view_reagents_basket"))
 
 # ── My Orders (three-section view) ────────────────────────────────────────────
-@app.route("/my-orders")
+@app.route("/my-orders", methods=["GET"])
 def my_orders():
-    email = request.args.get("email", "").strip()
+    """
+    Engineer-facing order view:
+    - Back Orders: items explicitly marked back_order=True and still remaining > 0
+    - Active Orders: other outstanding items (remaining > 0) not flagged as back order
+    - Sent Items (Last 7 Days / Over 7 Days): from dispatch notes/items
+    - last_dispatch_for_part: map for the "Last Dispatched" column
+    """
+    email = (request.args.get("email") or "").strip()
     if not email:
-        return render_template("my_orders.html")
+        # First load or missing email: show the form only
+        return render_template("my_orders.html", email=None)
 
-    # 1) Active Orders: any line with remaining > 0 (no date filter)
-    active_orders = (
+    # -------- outstanding items (remaining > 0) --------
+    # Pull ALL outstanding lines for this engineer (regardless of back_order flag)
+    outstanding_items = (
         db.session.query(PartsOrderItem)
-        .join(PartsOrder)
+        .join(PartsOrder, PartsOrder.id == PartsOrderItem.order_id)
         .filter(
-            func.lower(PartsOrder.email) == email.lower(),
-            PartsOrderItem.quantity > PartsOrderItem.quantity_sent
+            PartsOrder.email == email,
+            (PartsOrderItem.quantity - func.coalesce(PartsOrderItem.quantity_sent, 0)) > 0
         )
         .order_by(PartsOrder.date.asc(), PartsOrderItem.id.asc())
         .all()
     )
 
-    # For "Last Dispatched" column in Active
-    last_dispatch_for_part = get_last_dispatch_map(email)
+    # Split: explicit back orders vs other active items
+    back_orders = [i for i in outstanding_items if bool(getattr(i, "back_order", False))]
+    active_orders = [i for i in outstanding_items if not bool(getattr(i, "back_order", False))]
 
-    # 2) Sent Items (Last 7 Days): real picks from dispatch tables
-    recent_dispatches = get_recent_dispatches(email, days=7)
+    # -------- dispatch history (recent vs older) --------
+    now = datetime.utcnow()
+    last_7 = now - timedelta(days=7)
 
-    # 3) Sent Items (Over 7 Days Ago): real picks older than 7 days
-    older_dispatches = get_older_dispatches(email, older_than_days=7)
+    # Recent (≤ 7 days)
+    recent_dispatches = (
+        db.session.query(
+            DispatchNote.date.label("dispatch_date"),
+            DispatchItem.part_number.label("part_number"),
+            DispatchItem.description.label("description"),
+            DispatchItem.quantity_sent.label("qty_sent"),
+        )
+        .join(DispatchItem, DispatchItem.dispatch_note_id == DispatchNote.id)
+        .filter(
+            DispatchNote.engineer_email == email,
+            DispatchNote.date >= last_7,
+        )
+        .order_by(DispatchNote.date.desc(), DispatchItem.part_number.asc())
+        .all()
+    )
 
+    # Older (> 7 days)
+    older_dispatches = (
+        db.session.query(
+            DispatchNote.date.label("dispatch_date"),
+            DispatchItem.part_number.label("part_number"),
+            DispatchItem.description.label("description"),
+            DispatchItem.quantity_sent.label("qty_sent"),
+        )
+        .join(DispatchItem, DispatchItem.dispatch_note_id == DispatchNote.id)
+        .filter(
+            DispatchNote.engineer_email == email,
+            DispatchNote.date < last_7,
+        )
+        .order_by(DispatchNote.date.desc(), DispatchItem.part_number.asc())
+        .all()
+    )
+
+    # -------- last dispatch per part (for the table badges) --------
+    last_dispatch_results = (
+        db.session.query(
+            DispatchItem.part_number.label("part_number"),
+            func.max(DispatchNote.date).label("last_date"),
+        )
+        .join(DispatchNote, DispatchNote.id == DispatchItem.dispatch_note_id)
+        .filter(DispatchNote.engineer_email == email)
+        .group_by(DispatchItem.part_number)
+        .all()
+    )
+    last_dispatch_for_part = {row.part_number: row.last_date for row in last_dispatch_results}
+
+    # Render
     return render_template(
         "my_orders.html",
         email=email,
+        back_orders=back_orders,
         active_orders=active_orders,
         recent_dispatches=recent_dispatches,
         older_dispatches=older_dispatches,
-        last_dispatch_for_part=last_dispatch_for_part
+        last_dispatch_for_part=last_dispatch_for_part,
     )
 
 # ──────────────────────────────────────────────────────────────────────────────
