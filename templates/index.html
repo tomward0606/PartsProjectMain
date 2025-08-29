@@ -52,7 +52,7 @@
             {% if part.manufacturer %}
               <p class="card-text"><strong>Manufacturer:</strong> {{ part.manufacturer }}</p>
             {% endif %}
-            {% if part.image %}
+            {% if part.image and part.image != 'placeholder.png' %}
               <div class="image-square mb-2">
                 <img src="{{ url_for('static', filename='images/' + part.image) }}" alt="{{ part.description }}">
               </div>
@@ -76,4 +76,6 @@
 
 </body>
 </html>
+
+
 
