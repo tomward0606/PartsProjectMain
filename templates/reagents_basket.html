@@ -65,8 +65,8 @@
             <input type="text" class="form-control" id="first_name" name="first_name" placeholder="e.g. John" required>
           </div>
           <div class="col-md-6">
-            <label for="last_name" class="form-label">Last Name</label>
-            <input type="text" class="form-control" id="last_name" name="last_name" placeholder="e.g. Smith" required>
+            <label for="last_name" class="form-label">Last Name (optional)</label>
+            <input type="text" class="form-control" id="last_name" name="last_name" placeholder="e.g. Smith">
           </div>
         </div>
         <div class="mb-3">
@@ -101,8 +101,13 @@
       const firstName = firstNameInput.value.trim().toLowerCase();
       const lastName = lastNameInput.value.trim().toLowerCase();
       
-      if (firstName && lastName) {
-        const emailPrefix = `${firstName}.${lastName}`;
+      if (firstName) {
+        let emailPrefix;
+        if (lastName) {
+          emailPrefix = `${firstName}.${lastName}`;
+        } else {
+          emailPrefix = firstName;
+        }
         emailDisplay.value = emailPrefix;
         emailUserHidden.value = emailPrefix;
       } else {
@@ -117,9 +122,10 @@
     form.addEventListener('submit', function (e) {
       if (!emailUserHidden.value) {
         e.preventDefault();
-        alert('Please enter both first and last name');
+        alert('Please enter at least your first name');
       }
     });
   </script>
 </body>
 </html>
+
