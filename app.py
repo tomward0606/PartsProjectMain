@@ -39,8 +39,8 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
 app.config["MAIL_PORT"] = 587
 app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = "your.address@gmail.com"            # ← change me
-app.config["MAIL_PASSWORD"] = "your_16_char_app_password"         # ← change me
+app.config["MAIL_USERNAME"] = "servitech.stock@gmail.com"            # ← change me
+app.config["MAIL_PASSWORD"] = "qmorqthzpbxqnkrp"         # ← change me
 app.config["MAIL_DEFAULT_SENDER"] = ("Servitech Stock", app.config["MAIL_USERNAME"])
 
 # Suppress sending during local dev to avoid crashes / real emails
@@ -559,4 +559,5 @@ def my_orders():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
