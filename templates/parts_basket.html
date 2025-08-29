@@ -60,17 +60,29 @@
       {% endfor %}
 
       <form method="post" action="{{ url_for('submit_basket') }}" class="mt-4" id="partsBasketForm">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label for="first_name" class="form-label">First Name</label>
+            <input type="text" class="form-control" id="first_name" name="first_name" placeholder="e.g. John" required>
+          </div>
+          <div class="col-md-6">
+            <label for="last_name" class="form-label">Last Name</label>
+            <input type="text" class="form-control" id="last_name" name="last_name" placeholder="e.g. Smith" required>
+          </div>
+        </div>
         <div class="mb-3">
-          <label for="email_user" class="form-label">Your Servitech Email</label>
+          <label class="form-label">Your Servitech Email</label>
           <div class="input-group">
-            <input type="text" class="form-control" id="email_user" name="email_user" placeholder="e.g. john.smith" required>
+            <input type="text" class="form-control" id="email_display" readonly style="background-color: #e9ecef;">
             <span class="input-group-text">@servitech.co.uk</span>
           </div>
+          <small class="form-text text-muted">Email will be automatically generated from your name</small>
         </div>
         <div class="mb-3">
           <label for="comments" class="form-label">Additional Comments</label>
           <textarea class="form-control" name="comments" rows="3" placeholder="Any special notes or comments..."></textarea>
         </div>
+        <input type="hidden" name="email_user" id="email_user">
         <input type="hidden" name="source" value="catalogue">
         <button type="submit" class="btn btn-success">Submit Parts Request</button>
       </form>
@@ -80,27 +92,36 @@
   </div>
 
   <script>
+    const firstNameInput = document.getElementById('first_name');
+    const lastNameInput = document.getElementById('last_name');
+    const emailDisplay = document.getElementById('email_display');
+    const emailUserHidden = document.getElementById('email_user');
     const form = document.getElementById('partsBasketForm');
-    const emailInput = document.getElementById('email_user');
+
+    function updateEmail() {
+      const firstName = firstNameInput.value.trim().toLowerCase();
+      const lastName = lastNameInput.value.trim().toLowerCase();
+      
+      if (firstName && lastName) {
+        const emailPrefix = `${firstName}.${lastName}`;
+        emailDisplay.value = emailPrefix;
+        emailUserHidden.value = emailPrefix;
+      } else {
+        emailDisplay.value = '';
+        emailUserHidden.value = '';
+      }
+    }
+
+    firstNameInput.addEventListener('input', updateEmail);
+    lastNameInput.addEventListener('input', updateEmail);
 
     form.addEventListener('submit', function (e) {
-      let val = emailInput.value.trim();
-
-      // Count '@' characters
-      const atCount = (val.match(/@/g) || []).length;
-      if (atCount > 1) {
-        // Remove everything from last '@'
-        val = val.substring(0, val.lastIndexOf('@'));
+      if (!emailUserHidden.value) {
+        e.preventDefault();
+        alert('Please enter both first and last name');
       }
-
-      // Remove '@servitech.co.uk' if user typed it fully
-      const domain = '@servitech.co.uk';
-      if (val.toLowerCase().endsWith(domain)) {
-        val = val.substring(0, val.toLowerCase().lastIndexOf(domain));
-      }
-
-      emailInput.value = val;
     });
   </script>
 </body>
 </html>
+
