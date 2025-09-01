@@ -43,8 +43,8 @@ app.config["MAIL_USERNAME"] = "servitech.stock@gmail.com"            # ← chang
 app.config["MAIL_PASSWORD"] = "qmorqthzpbxqnkrp"         # ← change me
 app.config["MAIL_DEFAULT_SENDER"] = ("Servitech Stock", app.config["MAIL_USERNAME"])
 
-# Suppress sending during local dev to avoid crashes / real emails
-app.config["MAIL_SUPPRESS_SEND"] = True  # flip to False when you want real emails
+# Suppress sending EMAILS to avoid crashes / real emails
+app.config["MAIL_SUPPRESS_SEND"] = False  # flip to False when NOT TESTING
 
 db = SQLAlchemy(app)
 mail = Mail(app)
@@ -559,5 +559,6 @@ def my_orders():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
