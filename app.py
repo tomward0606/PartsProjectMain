@@ -14,13 +14,7 @@ from flask_mail import Mail, Message
 from sqlalchemy import desc, func
 from typing import Set  
 
-
 # ── App & Config ──────────────────────────────────────────────────────────────
-# ── App & Config (LOCAL HARD-CODED) ────────────────────────────────────────────
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_mail import Mail
-
 app = Flask(__name__)
 
 # Simple dev secret key
@@ -35,20 +29,32 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Mail (Gmail via App Password) — set your test creds here
+# PRODUCTION: Mail configuration should use environment variables
+# For production, these should be loaded from environment variables instead of hardcoded
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
 app.config["MAIL_PORT"] = 587
 app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = "servitech.stock@gmail.com"            # ← change me
-app.config["MAIL_PASSWORD"] = "qmorqthzpbxqnkrp"         # ← change me
-app.config["MAIL_DEFAULT_SENDER"] = ("Servitech Stock", app.config["MAIL_USERNAME"])
+app.config["MAIL_USERNAME"] = "servitech.stock@gmail.com"
+app.config["MAIL_PASSWORD"] = "qmorqthzpbxqnkrp"  # In production, use environment variable
+app.config["MAIL_DEFAULT_SENDER"] = ("Servitech Stock", "servitech.stock@gmail.com")
 
-# Suppress sending EMAILS to avoid crashes / real emails
-app.config["MAIL_SUPPRESS_SEND"] = False  # flip to False when NOT TESTING
+# Production settings - ensure emails are sent
+app.config["TESTING"] = False
+app.config["MAIL_SUPPRESS_SEND"] = False
+app.config["MAIL_DEBUG"] = False  # Set to True for debugging, False for production
+app.config["MAIL_FAIL_SILENTLY"] = False
 
+# Production logging configuration
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# NOW create the database and mail objects AFTER all config is set
 db = SQLAlchemy(app)
 mail = Mail(app)
-
 
 # ── Models ────────────────────────────────────────────────────────────────────
 # Reagents (existing)
@@ -84,7 +90,7 @@ class PartsOrderItem(db.Model):
     quantity_sent = db.Column(db.Integer, default=0)
     back_order = db.Column(db.Boolean, nullable=False, default=False)
 
-# Dispatch tables (from Stock System) — needed for “Sent last 7 days”
+# Dispatch tables (from Stock System) — needed for "Sent last 7 days"
 class DispatchNote(db.Model):
     __tablename__ = "dispatch_note"
     id = db.Column(db.Integer, primary_key=True)
@@ -136,7 +142,7 @@ with open("parts.csv", newline="", encoding="cp1252") as csvfile:
 def get_categories(parts):
     return sorted({p["category"] for p in parts})
 
-# ── Helpers for “My Orders” ───────────────────────────────────────────────────
+# ── Helpers for "My Orders" ───────────────────────────────────────────────────
 def get_recent_dispatches(email: str, days: int = 7):
     """Actual picked lines for this engineer in the last N days (from dispatch tables)."""
     if not email:
@@ -202,6 +208,32 @@ def get_older_dispatches(email: str, older_than_days: int = 7):
 @app.route("/")
 def landing():
     return render_template("landing.html")
+
+# Test route to verify email configuration
+@app.route("/test-email")
+def test_email():
+    """Test route to verify email configuration is working"""
+    try:
+        logger.info("Testing email configuration...")
+        logger.info(f"MAIL_SERVER: {app.config.get('MAIL_SERVER')}")
+        logger.info(f"MAIL_PORT: {app.config.get('MAIL_PORT')}")
+        logger.info(f"MAIL_USE_TLS: {app.config.get('MAIL_USE_TLS')}")
+        logger.info(f"MAIL_USERNAME: {app.config.get('MAIL_USERNAME')}")
+        logger.info(f"TESTING: {app.config.get('TESTING')}")
+        logger.info(f"MAIL_SUPPRESS_SEND: {app.config.get('MAIL_SUPPRESS_SEND')}")
+        
+        msg = Message(
+            subject="TEST EMAIL - Reagent System",
+            recipients=["Purchasing@servitech.co.uk"],
+            cc=["tom@servitech.co.uk"],
+            body="This is a test email to verify the reagent ordering system is working properly.\n\nIf you receive this, the email configuration is working correctly."
+        )
+        mail.send(msg)
+        logger.info("Test email sent successfully!")
+        return "Test email sent successfully! Check Michelle's inbox and spam folder, and check application logs for SMTP details."
+    except Exception as e:
+        logger.error(f"Test email failed: {str(e)}")
+        return f"Test email failed to send. Error: {str(e)}"
 
 # Catalogue (Parts)
 @app.route("/catalogue")
@@ -355,36 +387,49 @@ def submit_basket():
         "Requested Items:\n\n" + "\n\n".join(lines) + "\n"
     )
 
+    # Determine recipients and subject based on source
     if source == "reagents":
         subject = f"REAGENTS REQUEST FROM {engineer_email}"
         recipients = ["Purchasing@servitech.co.uk"]
+        logger.info(f"Sending reagent email to Purchasing: {recipients}")
     else:
         subject = f"PARTS REQUEST FROM {engineer_email}"
         recipients = ["StockRequests@servitech.co.uk"]
+        logger.info(f"Sending parts email to: {recipients}")
 
-    msg = Message(subject, recipients=recipients, cc=[engineer_email], body=body_text)
-    mail.send(msg)
+    # Enhanced email sending with error handling
+    try:
+        logger.info(f"Sending {source} order email from {engineer_email}")
+        
+        msg = Message(subject, recipients=recipients, cc=[engineer_email], body=body_text)
+        mail.send(msg)
+        logger.info(f"SUCCESS: Email sent successfully to {recipients}")
 
-    # write to DB
-    if source == "reagents":
-        new_order = ReagentOrder(email=engineer_email, date=datetime.utcnow())
-        for pnum, item in basket.items():
-            new_order.items.append(
-                ReagentOrderItem(part_number=pnum, description=item["description"], quantity=item["quantity"])
-            )
-    else:
-        new_order = PartsOrder(email=engineer_email, date=datetime.utcnow())
-        for pnum, item in basket.items():
-            new_order.items.append(
-                PartsOrderItem(part_number=pnum, description=item["description"], quantity=item["quantity"])
-            )
+        # Save to database only after successful email send
+        if source == "reagents":
+            new_order = ReagentOrder(email=engineer_email, date=datetime.utcnow())
+            for pnum, item in basket.items():
+                new_order.items.append(
+                    ReagentOrderItem(part_number=pnum, description=item["description"], quantity=item["quantity"])
+                )
+        else:
+            new_order = PartsOrder(email=engineer_email, date=datetime.utcnow())
+            for pnum, item in basket.items():
+                new_order.items.append(
+                    PartsOrderItem(part_number=pnum, description=item["description"], quantity=item["quantity"])
+                )
 
-    db.session.add(new_order)
-    db.session.commit()
+        db.session.add(new_order)
+        db.session.commit()
 
-    session["basket"] = {}
-    flash("Your order has been sent!", "success")
-    return render_template("confirmation.html")
+        session["basket"] = {}
+        flash("Your order has been sent!", "success")
+        return render_template("confirmation.html")
+        
+    except Exception as e:
+        logger.error(f"ERROR: Failed to send {source} order email - {str(e)}")
+        flash(f"Failed to send order. Please contact IT support.", "danger")
+        return redirect(url_for("view_reagents_basket" if source == "reagents" else "view_parts_basket"))
 
 # Reorder (reagents)
 @app.route("/reorder", methods=["GET", "POST"])
@@ -427,15 +472,22 @@ def reorder_submit():
     lines = [f"{i.part_number} – {i.description} x{i.quantity}" for i in sel.items]
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     body = f"Engineer {email} reorders:\n\n" + "\n".join(lines) + f"\n\n[Reordered on {timestamp}]"
-    msg = Message(
-        subject=f"***TEST REAGENTS REQUEST FROM {email}***",
-        recipients=["Purchasing@servitech.co.uk"],
-        cc=[email],
-        body=body
-    )
-    mail.send(msg)
-    flash("Reorder sent!", "success")
-    return render_template("confirmation.html")
+    
+    try:
+        msg = Message(
+            subject=f"***REAGENTS REORDER REQUEST FROM {email}***",
+            recipients=["Purchasing@servitech.co.uk"],
+            cc=[email],
+            body=body
+        )
+        mail.send(msg)
+        logger.info(f"SUCCESS: Reorder email sent to Purchasing for {email}")
+        flash("Reorder sent!", "success")
+        return render_template("confirmation.html")
+    except Exception as e:
+        logger.error(f"ERROR: Failed to send reorder email - {str(e)}")
+        flash(f"Failed to send reorder. Error: {str(e)}", "danger")
+        return redirect(url_for("reorder"))
 
 @app.route("/reorder_to_basket", methods=["POST"])
 def reorder_to_basket():
@@ -559,6 +611,3 @@ def my_orders():
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-
-
