@@ -5,14 +5,17 @@
 from datetime import datetime, timedelta
 import os
 import csv
+from io import StringIO
 
 from flask import (
-    Flask, render_template, request, redirect, url_for, session, flash
+    Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
-from sqlalchemy import desc, func
-from typing import Set  
+from typing import Set
+from sqlalchemy import desc, func, UniqueConstraint
+from sqlalchemy.exc import IntegrityError
+
 
 # ── App & Config ──────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -123,6 +126,48 @@ def get_hidden_part_numbers() -> Set[str]:
     return {norm_pn(pn) for (pn,) in rows}
 
 
+
+# ── Stocktake Models ─────────────────────────────────────────────────────────
+
+class StocktakeRun(db.Model):
+    __tablename__ = "stocktake_run"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Stocktake(db.Model):
+    __tablename__ = "stocktake"
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey("stocktake_run.id"), nullable=False)
+    engineer_email = db.Column(db.String(120), nullable=False)
+    status = db.Column(db.String(20), default="draft", nullable=False)  # draft | submitted
+    submitted_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    run = db.relationship("StocktakeRun", backref="stocktakes")
+    items = db.relationship("StocktakeItem", backref="stocktake", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "engineer_email", name="uq_stocktake_run_engineer"),
+    )
+
+
+class StocktakeItem(db.Model):
+    __tablename__ = "stocktake_item"
+    id = db.Column(db.Integer, primary_key=True)
+    stocktake_id = db.Column(db.Integer, db.ForeignKey("stocktake.id"), nullable=False)
+    part_number = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.String(256), nullable=True)
+    quantity = db.Column(db.Integer, default=0, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("stocktake_id", "part_number", name="uq_stocktake_item_unique_part"),
+    )
+
+
+
 # ── CSV catalogue load ────────────────────────────────────────────────────────
 parts_db = []
 with open("parts.csv", newline="", encoding="cp1252") as csvfile:
@@ -141,6 +186,11 @@ with open("parts.csv", newline="", encoding="cp1252") as csvfile:
 
 def get_categories(parts):
     return sorted({p["category"] for p in parts})
+
+def stocktake_leader_password() -> str:
+    # TODO: replace with env var later ------------------------------------------------------STOCKTAKE PASSOWRRD
+    return "123"
+
 
 # ── Helpers for "My Orders" ───────────────────────────────────────────────────
 def get_recent_dispatches(email: str, days: int = 7):
@@ -203,6 +253,29 @@ def get_older_dispatches(email: str, older_than_days: int = 7):
         .all()
     )
     return rows
+
+
+# ── Stocktake Helpers ─────────────────────────────────────────────────────────
+
+def get_or_create_active_stocktake_run() -> StocktakeRun:
+    run = StocktakeRun.query.filter_by(is_active=True).order_by(StocktakeRun.id.desc()).first()
+    if run:
+        return run
+    # Create a default active run if none exists
+    run_name = f"Stocktake {datetime.utcnow().strftime('%Y')}"
+    run = StocktakeRun(name=run_name, is_active=True)
+    db.session.add(run)
+    db.session.commit()
+    return run
+
+def stocktake_leader_email() -> str:
+    # Configure in environment on Render
+    return (os.environ.get("STOCKTAKE_LEADER_EMAIL") or "servitech.stock@gmail.com").strip()
+
+def normalize_engineer_email(user: str) -> str:
+    engineer_name = (user or "").strip().lower()
+    return f"{engineer_name}@servitech.co.uk" if engineer_name else ""
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route("/")
@@ -512,6 +585,598 @@ def reorder_to_basket():
     session["basket"] = basket
     flash("Added past order to basket!", "success")
     return redirect(url_for("view_reagents_basket"))
+
+# ── Stocktake Routes ─────────────────────────────────────────────────────────
+
+@app.route("/stocktake", methods=["GET", "POST"])
+def stocktake_start():
+    if request.method == "GET":
+        return render_template("stocktake_start.html")
+
+    engineer_user = request.form.get("email_user", "")
+    engineer_email = normalize_engineer_email(engineer_user)
+    if not engineer_email or "@servitech.co.uk" not in engineer_email:
+        flash("Please enter your email username (e.g. tom).", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+
+@app.route("/stocktake/<engineer_email>", methods=["GET"])
+def stocktake_page(engineer_email):
+    run = get_or_create_active_stocktake_run()
+
+    # Get or create engineer stocktake for this run
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        st = Stocktake(run_id=run.id, engineer_email=engineer_email.lower(), status="draft")
+        db.session.add(st)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+
+    submitted = (st.status == "submitted")
+    submitted_at = st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else None
+
+    # Catalogue filtering mirrors /catalogue but excludes reagents (same as your parts catalogue base) :contentReference[oaicite:5]{index=5}
+    base = [p for p in parts_db if "reagent" not in (p.get("category", "").lower())]
+    hidden = get_hidden_part_numbers()
+    parts = [p for p in base if norm_pn(p.get("part_number", "")) not in hidden]
+
+    category = request.args.get("category")
+    search = (request.args.get("search") or "").strip().lower()
+
+    if search:
+        filtered = [
+            p for p in parts
+            if (not category or p.get("category") == category) and (
+                search in (p.get("part_number", "").lower()) or
+                search in (p.get("description", "").lower()) or
+                search in (p.get("make", "").lower()) or
+                search in (p.get("manufacturer", "").lower())
+            )
+        ]
+    else:
+        filtered = [p for p in parts if not category or p.get("category") == category]
+
+    items = (
+        StocktakeItem.query
+        .filter_by(stocktake_id=st.id)
+        .order_by(StocktakeItem.part_number.asc())
+        .all()
+    )
+
+    return render_template(
+        "stocktake_page.html",
+        engineer_email=engineer_email.lower(),
+        run_name=run.name,
+        submitted=submitted,
+        submitted_at=submitted_at,
+        parts=filtered,
+        categories=get_categories(parts),
+        selected_category=category,
+        search=search,
+        items=items,
+    )
+
+
+@app.route("/stocktake/<engineer_email>/add/<path:part_number>")
+def stocktake_add_item(engineer_email, part_number):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        flash("Stocktake not found. Start again.", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    if st.status == "submitted":
+        flash("This stocktake is already submitted and locked.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    part = next((p for p in parts_db if p["part_number"] == part_number), None)
+    if not part:
+        flash("Part not found.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=part_number).first()
+    if item:
+        item.quantity += 1
+    else:
+        item = StocktakeItem(
+            stocktake_id=st.id,
+            part_number=part_number,
+            description=part.get("description", ""),
+            quantity=1
+        )
+        db.session.add(item)
+
+    db.session.commit()
+    return redirect(request.referrer or url_for("stocktake_page", engineer_email=engineer_email))
+
+
+@app.route("/stocktake/<engineer_email>/update/<path:part_number>", methods=["POST"])
+def stocktake_update_item(engineer_email, part_number):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": False, "error": "Stocktake not found."}), 404
+        flash("Stocktake not found.", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    if st.status == "submitted":
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": False, "error": "This stocktake is locked."}), 403
+        flash("This stocktake is already submitted and locked.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    try:
+        qty = int(request.form.get("quantity", 0))
+    except ValueError:
+        qty = 0
+
+    item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=part_number).first()
+    if not item:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": False, "error": "Item not found."}), 404
+        flash("Item not found.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    removed = False
+    if qty <= 0:
+        db.session.delete(item)
+        removed = True
+    else:
+        item.quantity = qty
+
+    db.session.commit()
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        items_count = StocktakeItem.query.filter_by(stocktake_id=st.id).count()
+        return jsonify({
+            "ok": True,
+            "removed": removed,
+            "part_number": part_number,
+            "quantity": None if removed else item.quantity,
+            "items_count": items_count
+        })
+
+    return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+
+@app.route("/stocktake/<engineer_email>/remove/<path:part_number>")
+def stocktake_remove_item(engineer_email, part_number):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        flash("Stocktake not found.", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    if st.status == "submitted":
+        flash("This stocktake is already submitted and locked.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=part_number).first()
+    if item:
+        db.session.delete(item)
+        db.session.commit()
+
+    return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+
+@app.route("/stocktake/<engineer_email>/review", methods=["GET"])
+def stocktake_review(engineer_email):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        flash("Stocktake not found.", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
+    total_qty = sum([i.quantity for i in items])
+
+    submitted = (st.status == "submitted")
+    submitted_at = st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else None
+
+    return render_template(
+        "stocktake_review.html",
+        engineer_email=engineer_email.lower(),
+        run_name=run.name,
+        items=items,
+        total_qty=total_qty,
+        submitted=submitted,
+        submitted_at=submitted_at
+    )
+
+
+@app.route("/stocktake/<engineer_email>/submit", methods=["POST"])
+def stocktake_submit(engineer_email):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        flash("Stocktake not found.", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    if st.status == "submitted":
+        flash("Already submitted.", "success")
+        return redirect(url_for("stocktake_review", engineer_email=engineer_email))
+
+    ack = request.form.get("ack")
+    confirm_text = (request.form.get("confirm_text") or "").strip().upper()
+    if ack != "yes" or confirm_text != "SUBMIT":
+        flash("To submit, tick the checkbox and type SUBMIT.", "warning")
+        return redirect(url_for("stocktake_review", engineer_email=engineer_email))
+
+    items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
+    if not items:
+        flash("You can’t submit an empty stocktake.", "warning")
+        return redirect(url_for("stocktake_review", engineer_email=engineer_email))
+
+    # Lock it first (so refresh/double-click can’t double-submit)
+    st.status = "submitted"
+    st.submitted_at = datetime.utcnow()
+    db.session.commit()
+
+    # Build email body
+    lines = [
+        f"• Part Number: {it.part_number}\n  Description: {it.description}\n  Quantity: {it.quantity}"
+        for it in items
+    ]
+
+    body_text = (
+        f"Engineer: {engineer_email.lower()}\n"
+        f"Run: {run.name}\n"
+        f"Submitted: {st.submitted_at.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+        "Stocktake Items:\n\n" + "\n\n".join(lines) + "\n"
+    )
+
+    leader = stocktake_leader_email()
+    subject = f"STOCKTAKE SUBMITTED - {engineer_email.lower()} - {run.name}"
+
+    try:
+        msg_engineer = Message(
+            subject=f"STOCKTAKE CONFIRMATION - {run.name}",
+            recipients=[engineer_email.lower()],
+            body=body_text
+        )
+        mail.send(msg_engineer)
+
+        msg_leader = Message(
+            subject=subject,
+            recipients=[leader],
+            cc=[engineer_email.lower()],
+            body=body_text
+        )
+        mail.send(msg_leader)
+
+        logger.info(f"SUCCESS: Stocktake submitted by {engineer_email.lower()} and emailed to {leader}")
+
+    except Exception as e:
+        # Stocktake remains submitted even if email fails (better than letting duplicates happen)
+        logger.error(f"ERROR: Stocktake submitted but email failed - {str(e)}")
+
+    return render_template(
+        "stocktake_confirmation.html",
+        engineer_email=engineer_email.lower(),
+        run_name=run.name,
+        submitted_at=st.submitted_at.strftime("%Y-%m-%d %H:%M UTC")
+    )
+
+@app.route("/stocktake-leader", methods=["GET", "POST"])
+def stocktake_leader_login():
+    if request.method == "GET":
+        return render_template("stocktake_leader_login.html")
+
+    pw = (request.form.get("password") or "").strip()
+    if not stocktake_leader_password():
+        flash("Leader password not set. Add STOCKTAKE_LEADER_PASSWORD in environment variables.", "warning")
+        return redirect(url_for("stocktake_leader_login"))
+
+    if pw != stocktake_leader_password():
+        flash("Incorrect password.", "warning")
+        return redirect(url_for("stocktake_leader_login"))
+
+    session["stocktake_leader_authed"] = True
+    return redirect(url_for("stocktake_leader_dashboard"))
+def require_stocktake_leader():
+    """Guard helper used by leader routes.
+
+    Returns None when the session is authorised, otherwise returns a redirect
+    response to the leader login page. This matches existing callsites that
+    do `guard = require_stocktake_leader(); if guard: return guard`.
+    """
+    if session.get("stocktake_leader_authed"):
+        return None
+    return redirect(url_for("stocktake_leader_login"))
+
+
+@app.route("/stocktake-leader/logout")
+def stocktake_leader_logout():
+    session.pop("stocktake_leader_authed", None)
+    return redirect(url_for("stocktake_leader_login"))
+
+
+@app.route("/stocktake-leader/dashboard")
+def stocktake_leader_dashboard():
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    run = get_or_create_active_stocktake_run()
+
+    # Master totals across ALL submitted engineers (current run)
+    totals_rows = (
+        db.session.query(
+            StocktakeItem.part_number.label("part_number"),
+            StocktakeItem.description.label("description"),
+            func.sum(StocktakeItem.quantity).label("total_qty")
+        )
+        .join(Stocktake, StocktakeItem.stocktake_id == Stocktake.id)
+        .filter(Stocktake.run_id == run.id, Stocktake.status == "submitted")
+        .group_by(StocktakeItem.part_number, StocktakeItem.description)
+        .order_by(StocktakeItem.part_number.asc())
+        .all()
+    )
+
+    # Submitted stocktakes list (per engineer)
+    submitted = (
+        Stocktake.query
+        .filter_by(run_id=run.id, status="submitted")
+        .order_by(Stocktake.submitted_at.desc())
+        .all()
+    )
+
+    submissions = []
+    for st in submitted:
+        items = StocktakeItem.query.filter_by(stocktake_id=st.id).all()
+        submissions.append({
+            "id": st.id,
+            "engineer_email": st.engineer_email,
+            "submitted_at_str": st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else "—",
+            "lines": len(items),
+            "total_qty": sum(i.quantity for i in items),
+        })
+
+    # Convert totals rows to simple dicts for template
+    master_totals = [{"part_number": r.part_number, "description": r.description, "total_qty": int(r.total_qty)} for r in totals_rows]
+
+    return render_template(
+        "stocktake_leader_dashboard.html",
+        run_name=run.name,
+        master_totals=master_totals,
+        submissions=submissions
+    )
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>")
+def stocktake_leader_view_engineer(stocktake_id):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.get_or_404(stocktake_id)
+
+    if st.run_id != run.id:
+        flash("That stocktake is not part of the active run.", "warning")
+        return redirect(url_for("stocktake_leader_dashboard"))
+
+    items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
+
+    return render_template(
+        "stocktake_leader_engineer.html",
+        stocktake_id=st.id,
+        engineer_email=st.engineer_email,
+        run_name=run.name,
+        submitted_at=st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else "",
+        items=items
+    )
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/edit")
+def stocktake_leader_edit_engineer(stocktake_id):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.get_or_404(stocktake_id)
+
+    # Optional: keep edits on active run only
+    if st.run_id != run.id:
+        flash("That stocktake is not part of the active run.", "warning")
+        return redirect(url_for("stocktake_leader_dashboard"))
+
+    # Catalogue filtering (same logic as stocktake_page)
+    base = [p for p in parts_db if "reagent" not in (p.get("category", "").lower())]
+    hidden = get_hidden_part_numbers()
+    parts = [p for p in base if norm_pn(p.get("part_number", "")) not in hidden]
+
+    category = request.args.get("category")
+    search = (request.args.get("search") or "").strip().lower()
+
+    if search:
+        filtered = [
+            p for p in parts
+            if (not category or p.get("category") == category) and (
+                search in (p.get("part_number", "").lower()) or
+                search in (p.get("description", "").lower()) or
+                search in (p.get("make", "").lower()) or
+                search in (p.get("manufacturer", "").lower())
+            )
+        ]
+    else:
+        filtered = [p for p in parts if not category or p.get("category") == category]
+
+    items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
+
+    return render_template(
+        "stocktake_leader_engineer_edit.html",
+        stocktake_id=st.id,
+        engineer_email=st.engineer_email,
+        run_name=run.name,
+        submitted_at=st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else "—",
+        items=items,
+        parts=filtered,
+        categories=get_categories(parts),
+        selected_category=category,
+        search=search
+    )
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/add/<path:part_number>")
+def stocktake_leader_add_item(stocktake_id, part_number):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    st = Stocktake.query.get_or_404(stocktake_id)
+
+    part = next((p for p in parts_db if p["part_number"] == part_number), None)
+    if not part:
+        flash("Part not found.", "warning")
+        return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=part_number).first()
+    if item:
+        item.quantity += 1
+    else:
+        db.session.add(StocktakeItem(
+            stocktake_id=st.id,
+            part_number=part_number,
+            description=part.get("description", ""),
+            quantity=1
+        ))
+
+    db.session.commit()
+    return redirect(request.referrer or url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/remove/<path:part_number>")
+def stocktake_leader_remove_item(stocktake_id, part_number):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    item = StocktakeItem.query.filter_by(stocktake_id=stocktake_id, part_number=part_number).first()
+    if item:
+        db.session.delete(item)
+        db.session.commit()
+
+    return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/update/<path:part_number>", methods=["POST"])
+def stocktake_leader_update_item(stocktake_id, part_number):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    item = StocktakeItem.query.filter_by(stocktake_id=stocktake_id, part_number=part_number).first()
+    if not item:
+        return jsonify({"ok": False, "error": "Item not found."}), 404
+
+    try:
+        qty = int(request.form.get("quantity", 0))
+    except ValueError:
+        qty = 0
+
+    removed = False
+    if qty <= 0:
+        db.session.delete(item)
+        removed = True
+    else:
+        item.quantity = qty
+
+    db.session.commit()
+
+    items_count = StocktakeItem.query.filter_by(stocktake_id=stocktake_id).count()
+    return jsonify({
+        "ok": True,
+        "removed": removed,
+        "quantity": None if removed else qty,
+        "items_count": items_count
+    })
+
+
+# CSV export helper and routes for stocktake leader
+def csv_response(filename: str, rows: list, header: list):
+    sio = StringIO()
+    writer = csv.writer(sio)
+    writer.writerow(header)
+    writer.writerows(rows)
+    output = make_response(sio.getvalue())
+    output.headers["Content-Type"] = "text/csv"
+    output.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return output
+
+
+@app.route("/stocktake-leader/export/master.csv")
+def stocktake_leader_export_master():
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    run = get_or_create_active_stocktake_run()
+
+    totals_rows = (
+        db.session.query(
+            StocktakeItem.part_number,
+            StocktakeItem.description,
+            func.sum(StocktakeItem.quantity).label("total_qty")
+        )
+        .join(Stocktake, StocktakeItem.stocktake_id == Stocktake.id)
+        .filter(Stocktake.run_id == run.id, Stocktake.status == "submitted")
+        .group_by(StocktakeItem.part_number, StocktakeItem.description)
+        .order_by(StocktakeItem.part_number.asc())
+        .all()
+    )
+
+    rows = [(r.part_number, r.description, int(r.total_qty)) for r in totals_rows]
+    return csv_response(f"stocktake_master_{run.name}.csv", rows, ["part_number", "description", "total_qty"])
+
+
+@app.route("/stocktake-leader/export/all.csv")
+def stocktake_leader_export_all():
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    run = get_or_create_active_stocktake_run()
+
+    submitted = Stocktake.query.filter_by(run_id=run.id, status="submitted").all()
+
+    rows = []
+    for st in submitted:
+        items = StocktakeItem.query.filter_by(stocktake_id=st.id).all()
+        for it in items:
+            rows.append((st.engineer_email, it.part_number, it.description, it.quantity, st.submitted_at))
+
+    return csv_response(
+        f"stocktake_all_engineers_{run.name}.csv",
+        rows,
+        ["engineer_email", "part_number", "description", "quantity", "submitted_at_utc"]
+    )
+
+
+@app.route("/stocktake-leader/export/engineer/<int:stocktake_id>.csv")
+def stocktake_leader_export_engineer(stocktake_id):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    st = Stocktake.query.get_or_404(stocktake_id)
+    items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
+
+    rows = [(st.engineer_email, it.part_number, it.description, it.quantity) for it in items]
+    return csv_response(
+        f"stocktake_{st.engineer_email}.csv",
+        rows,
+        ["engineer_email", "part_number", "description", "quantity"]
+    )
+
+
 
 # ── My Orders (three-section view) ────────────────────────────────────────────
 @app.route("/my-orders", methods=["GET"])
