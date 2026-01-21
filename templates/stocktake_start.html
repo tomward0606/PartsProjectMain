@@ -12,7 +12,7 @@
       <div class="card-body p-4 p-md-5">
         <h3 class="mb-2">Stocktake</h3>
         <p class="text-muted mb-4">
-          Enter your email username (e.g. <strong>tom</strong>, not tom@servitech.co.uk).
+          Enter your email username (e.g. <strong>John</strong>, not tom@servitech.co.uk).
         </p>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -25,7 +25,7 @@
 
         <form method="POST" action="{{ url_for('stocktake_start') }}">
           <div class="input-group input-group-lg mb-3">
-            <input name="email_user" class="form-control" placeholder="email username" required>
+            <input name="email_user" class="form-control" placeholder="User" required>
             <span class="input-group-text">@servitech.co.uk</span>
           </div>
 
@@ -45,3 +45,4 @@
   </div>
 </body>
 </html>
+
