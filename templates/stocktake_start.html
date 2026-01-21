@@ -7,11 +7,13 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="bg-light">
-  <div class="container py-5" style="max-width: 760px;">
+  <div class="container py-5" style="max-width: 720px;">
     <div class="card shadow-sm border-0 rounded-4">
       <div class="card-body p-4 p-md-5">
         <h3 class="mb-2">Stocktake</h3>
-        <p class="text-muted mb-4">Enter your email username to load your stocktake.</p>
+        <p class="text-muted mb-4">
+          Enter your email username (e.g. <strong>tom</strong>, not tom@servitech.co.uk).
+        </p>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
@@ -22,26 +24,20 @@
         {% endwith %}
 
         <form method="POST" action="{{ url_for('stocktake_start') }}">
-          <div class="mb-3">
-            <label class="form-label">User</label>
-
-            <div class="input-group input-group-lg">
-              <input
-                class="form-control"
-                name="email_fragment"
-                placeholder=""
-                autocomplete="username"
-                required
-              >
-              <span class="input-group-text">@servitech.co.uk</span>
-            </div>
-
-            <div class="form-text">Example: if your email is name@servitech.co.uk, type <strong>name</strong>.</div>
+          <div class="input-group input-group-lg mb-3">
+            <input name="email_user" class="form-control" placeholder="email username" required>
+            <span class="input-group-text">@servitech.co.uk</span>
           </div>
 
           <div class="d-flex gap-2">
             <button class="btn btn-dark btn-lg">Continue</button>
             <a class="btn btn-outline-secondary btn-lg" href="{{ url_for('landing') }}">Back</a>
+          </div>
+
+          <hr class="my-4">
+
+          <div class="small text-muted">
+            Tip: You can build your stocktake over time. Only when you press <strong>Final Submit</strong> will it lock.
           </div>
         </form>
       </div>
@@ -49,6 +45,3 @@
   </div>
 </body>
 </html>
-
-
-
