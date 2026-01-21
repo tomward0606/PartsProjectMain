@@ -10,24 +10,26 @@
   <div class="container py-5" style="max-width: 900px;">
     <div class="card shadow-sm border-0 rounded-4">
       <div class="card-body p-4 p-md-5">
+
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
           <div>
             <h3 class="mb-0">Review & Final Submit</h3>
-            <div class="text-muted">Engineer: <strong>{{ engineer_email }}</strong> · Run: <strong>{{ run_name }}</strong></div>
+            <div class="text-muted">User: <strong>{{ engineer_email }}</strong></div>
           </div>
+
+          <!-- Always show -->
           <a href="{{ url_for('stocktake_page', engineer_email=engineer_email) }}" class="btn btn-outline-secondary">
-            Back to edit
+            Back to stocktake
           </a>
         </div>
 
         {% if submitted %}
           <div class="alert alert-success mt-3">
-            Already submitted on <strong>{{ submitted_at }}</strong>. This is read-only.
+            Submitted on <strong>{{ submitted_at }}</strong>. This stocktake is locked.
           </div>
         {% else %}
           <div class="alert alert-warning mt-3">
-            <strong>Final submission locks your stocktake.</strong><br>
-            Double-check quantities. If you submit by mistake you’ll need the stocktake lead to reopen it.
+            <strong>Final submission locks your stocktake.</strong> Double-check quantities before submitting.
           </div>
         {% endif %}
 
@@ -55,22 +57,12 @@
           </table>
         </div>
 
-        <div class="d-flex flex-wrap justify-content-between align-items-center mt-2">
-          <div class="text-muted">
-            Lines: <strong>{{ items|length }}</strong> · Total quantity: <strong>{{ total_qty }}</strong>
-          </div>
+        <div class="text-muted">
+          Lines: <strong>{{ items|length }}</strong> · Total quantity: <strong>{{ total_qty }}</strong>
         </div>
 
         {% if not submitted %}
           <hr class="my-4">
-
-          {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-              {% for category, message in messages %}
-                <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
-              {% endfor %}
-            {% endif %}
-          {% endwith %}
 
           <form method="POST" action="{{ url_for('stocktake_submit', engineer_email=engineer_email) }}">
             <div class="form-check mb-3">
@@ -86,17 +78,15 @@
             </div>
 
             <div class="d-flex gap-2">
-              <button class="btn btn-dark btn-lg" {% if items|length == 0 %}disabled{% endif %}>
-                Final Submit
-              </button>
-              <a href="{{ url_for('stocktake_page', engineer_email=engineer_email) }}" class="btn btn-outline-secondary btn-lg">
-                Cancel
-              </a>
+              <button class="btn btn-dark btn-lg" {% if items|length == 0 %}disabled{% endif %}>Final Submit</button>
+              <a href="{{ url_for('stocktake_page', engineer_email=engineer_email) }}" class="btn btn-outline-secondary btn-lg">Cancel</a>
             </div>
           </form>
         {% endif %}
+
       </div>
     </div>
   </div>
 </body>
 </html>
+
