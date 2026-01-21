@@ -8,12 +8,13 @@ import csv
 from io import StringIO
 
 from flask import (
-    Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response
+    Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response, Response
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
 from typing import Set
-from sqlalchemy import desc, func, UniqueConstraint
+from sqlalchemy import desc, func, UniqueConstraint, cast
+from sqlalchemy.types import Integer
 from sqlalchemy.exc import IntegrityError
 
 
@@ -863,6 +864,48 @@ def stocktake_submit(engineer_email):
         submitted_at=st.submitted_at.strftime("%Y-%m-%d %H:%M UTC")
     )
 
+
+@app.route("/stocktake/parts_search")
+def stocktake_parts_search():
+    """
+    Live search endpoint used by the stocktake page.
+    Returns a filtered list of parts from parts_db.
+    Logic matches the normal stocktake catalogue filtering.
+    """
+    q = (request.args.get("q") or "").strip().lower()
+    category = (request.args.get("category") or "").strip()
+
+    # Match your existing logic (exclude reagents, remove hidden parts)
+    base = [p for p in parts_db if "reagent" not in (p.get("category", "").lower())]
+    hidden = get_hidden_part_numbers()
+
+    results = []
+    for p in base:
+        pn = p.get("part_number", "") or ""
+        if not pn:
+            continue
+        if norm_pn(pn) in hidden:
+            continue
+        if category and (p.get("category") or "") != category:
+            continue
+
+        if q:
+            hay = f"{pn} {p.get('description','')} {p.get('make','')} {p.get('manufacturer','')}".lower()
+            if q not in hay:
+                continue
+
+        results.append({
+            "part_number": pn,
+            "description": p.get("description", "") or ""
+        })
+
+        # Safety limit so you don't return thousands every keystroke
+        if len(results) >= 250:
+            break
+
+    return jsonify({"ok": True, "parts": results})
+
+
 @app.route("/stocktake-leader", methods=["GET", "POST"])
 def stocktake_leader_login():
     if request.method == "GET":
@@ -905,46 +948,42 @@ def stocktake_leader_dashboard():
 
     run = get_or_create_active_stocktake_run()
 
-    # Master totals across ALL submitted engineers (current run)
-    totals_rows = (
-        db.session.query(
-            StocktakeItem.part_number.label("part_number"),
-            StocktakeItem.description.label("description"),
-            func.sum(StocktakeItem.quantity).label("total_qty")
-        )
-        .join(Stocktake, StocktakeItem.stocktake_id == Stocktake.id)
-        .filter(Stocktake.run_id == run.id, Stocktake.status == "submitted")
-        .group_by(StocktakeItem.part_number, StocktakeItem.description)
-        .order_by(StocktakeItem.part_number.asc())
-        .all()
-    )
-
-    # Submitted stocktakes list (per engineer)
-    submitted = (
+    # Get ALL stocktakes for this run (draft + submitted)
+    all_stocktakes = (
         Stocktake.query
-        .filter_by(run_id=run.id, status="submitted")
-        .order_by(Stocktake.submitted_at.desc())
+        .filter_by(run_id=run.id)
         .all()
     )
 
     submissions = []
-    for st in submitted:
+    for st in all_stocktakes:
         items = StocktakeItem.query.filter_by(stocktake_id=st.id).all()
+
+        # IMPORTANT: use submitted_at (not submitted_at_str) so templates can detect it
+        submitted_at = (
+            st.submitted_at.strftime("%Y-%m-%d %H:%M UTC")
+            if st.submitted_at else None
+        )
+
         submissions.append({
             "id": st.id,
             "engineer_email": st.engineer_email,
-            "submitted_at_str": st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else "—",
+            "submitted_at": submitted_at,     # <-- template-friendly
             "lines": len(items),
-            "total_qty": sum(i.quantity for i in items),
+            "status": st.status,              # 'draft' or 'submitted' (optional)
         })
 
-    # Convert totals rows to simple dicts for template
-    master_totals = [{"part_number": r.part_number, "description": r.description, "total_qty": int(r.total_qty)} for r in totals_rows]
+    # Sort: submitted first, then pending, newest submitted first
+    def sort_key(x):
+        is_pending = (x.get("submitted_at") is None)
+        # pending goes after submitted, submitted sorted by time desc (string is fine here)
+        return (is_pending, "" if x.get("submitted_at") is None else x.get("submitted_at"))
+
+    submissions.sort(key=sort_key, reverse=True)
 
     return render_template(
         "stocktake_leader_dashboard.html",
         run_name=run.name,
-        master_totals=master_totals,
         submissions=submissions
     )
 
@@ -1112,6 +1151,48 @@ def csv_response(filename: str, rows: list, header: list):
     return output
 
 
+def build_master_totals_for_run(run_id: int):
+    """
+    Returns list of dicts: [{part_number, description, total_qty}]
+    Totals are computed from DB (single source of truth).
+    Only includes submitted stocktakes for the given run.
+    """
+    # IMPORTANT: cast quantity -> Integer so SUM is correct even if stored as text
+    rows = (
+        db.session.query(
+            StocktakeItem.part_number.label("part_number"),
+            func.sum(cast(StocktakeItem.quantity, Integer)).label("total_qty"),
+        )
+        .join(Stocktake, StocktakeItem.stocktake_id == Stocktake.id)
+        .filter(
+            Stocktake.run_id == run_id,
+            Stocktake.status == "submitted",
+        )
+        .group_by(StocktakeItem.part_number)
+        .order_by(StocktakeItem.part_number.asc())
+        .all()
+    )
+
+    # Optional: description lookup (works if you have parts_db list/dict in memory)
+    # If you don't have parts_db, you can remove the description column.
+    desc_map = {}
+    try:
+        # parts_db: list of dicts (part_number, description)
+        desc_map = { (p.get("part_number") or "").strip(): (p.get("description") or "") for p in parts_db }
+    except Exception:
+        desc_map = {}
+
+    out = []
+    for pn, total_qty in rows:
+        pn_clean = (pn or "").strip()
+        out.append({
+            "part_number": pn_clean,
+            "description": desc_map.get(pn_clean, ""),
+            "total_qty": int(total_qty or 0),
+        })
+    return out
+
+
 @app.route("/stocktake-leader/export/master.csv")
 def stocktake_leader_export_master():
     guard = require_stocktake_leader()
@@ -1119,22 +1200,21 @@ def stocktake_leader_export_master():
         return guard
 
     run = get_or_create_active_stocktake_run()
+    master = build_master_totals_for_run(run.id)
 
-    totals_rows = (
-        db.session.query(
-            StocktakeItem.part_number,
-            StocktakeItem.description,
-            func.sum(StocktakeItem.quantity).label("total_qty")
-        )
-        .join(Stocktake, StocktakeItem.stocktake_id == Stocktake.id)
-        .filter(Stocktake.run_id == run.id, Stocktake.status == "submitted")
-        .group_by(StocktakeItem.part_number, StocktakeItem.description)
-        .order_by(StocktakeItem.part_number.asc())
-        .all()
+    # Build CSV
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Part Number", "Description", "Total Qty"])
+    for row in master:
+        w.writerow([row["part_number"], row["description"], row["total_qty"]])
+
+    filename = f"stocktake_master_run_{run.id}.csv"
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
-
-    rows = [(r.part_number, r.description, int(r.total_qty)) for r in totals_rows]
-    return csv_response(f"stocktake_master_{run.name}.csv", rows, ["part_number", "description", "total_qty"])
 
 
 @app.route("/stocktake-leader/export/all.csv")
@@ -1145,18 +1225,49 @@ def stocktake_leader_export_all():
 
     run = get_or_create_active_stocktake_run()
 
-    submitted = Stocktake.query.filter_by(run_id=run.id, status="submitted").all()
+    # Pull all submitted stocktakes for this run
+    submissions = (
+        Stocktake.query
+        .filter_by(run_id=run.id, status="submitted")
+        .order_by(Stocktake.submitted_at.asc())
+        .all()
+    )
 
-    rows = []
-    for st in submitted:
-        items = StocktakeItem.query.filter_by(stocktake_id=st.id).all()
+    # Optional: description lookup from parts_db (safe fallback)
+    desc_map = {}
+    try:
+        desc_map = {(p.get("part_number") or "").strip(): (p.get("description") or "") for p in parts_db}
+    except Exception:
+        desc_map = {}
+
+    buf = StringIO()
+    w = csv.writer(buf)
+
+    # One file, all engineers, one row per item
+    w.writerow(["Engineer Email", "Submitted At", "Part Number", "Description", "Quantity", "Run"])
+
+    for sub in submissions:
+        engineer = getattr(sub, "engineer_email", None) or ""
+        submitted_at = getattr(sub, "submitted_at", None)
+        submitted_at_str = submitted_at.strftime("%Y-%m-%d %H:%M:%S") if submitted_at else ""
+
+        items = (
+            StocktakeItem.query
+            .filter_by(stocktake_id=sub.id)
+            .order_by(StocktakeItem.part_number.asc())
+            .all()
+        )
+
         for it in items:
-            rows.append((st.engineer_email, it.part_number, it.description, it.quantity, st.submitted_at))
+            pn = (it.part_number or "").strip()
+            qty = int(it.quantity or 0)
+            w.writerow([engineer, submitted_at_str, pn, desc_map.get(pn, ""), qty, run.name])
 
-    return csv_response(
-        f"stocktake_all_engineers_{run.name}.csv",
-        rows,
-        ["engineer_email", "part_number", "description", "quantity", "submitted_at_utc"]
+    filename = f"stocktake_all_{run.name.replace(' ', '_')}.csv"
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 
