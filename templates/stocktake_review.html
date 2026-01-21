@@ -13,10 +13,18 @@
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
           <div>
             <h3 class="mb-0">Review & Final Submit</h3>
-            <div class="text-muted">Engineer: <strong>{{ engineer_email }}</strong> · Run: <strong>{{ run_name }}</strong></div>
+            <div class="text-muted">
+              Engineer: <strong>{{ engineer_email }}</strong> ·
+              {% if submitted %}
+                <strong>Stocktake date:</strong> {{ submitted_at }}
+              {% else %}
+                <strong>StockTake In progress</strong>
+              {% endif %}
+            </div>
           </div>
+
           <a href="{{ url_for('stocktake_page', engineer_email=engineer_email) }}" class="btn btn-outline-secondary">
-            Back to edit
+            Go back to Stocktake
           </a>
         </div>
 
@@ -90,7 +98,7 @@
                 Final Submit
               </button>
               <a href="{{ url_for('stocktake_page', engineer_email=engineer_email) }}" class="btn btn-outline-secondary btn-lg">
-                Cancel
+                Go back
               </a>
             </div>
           </form>

@@ -7,7 +7,26 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
   <style>
-    @media (max-width: 767.98px) {
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .muted { color: rgba(0,0,0,.6); }
+    .qty-status{ min-height: 18px; }
+    .qty-btn { width: 42px; }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: .75rem;
+    }
+    .topbar .left { justify-self: start; display:flex; gap:.5rem; flex-wrap: wrap; }
+    .topbar .center { justify-self: center; text-align:center; }
+    .topbar .right { justify-self: end; display:flex; gap:.5rem; flex-wrap: wrap; }
+
+    @media (max-width: 575.98px) {
+      .topbar { grid-template-columns: 1fr; }
+      .topbar .left, .topbar .right, .topbar .center { justify-self: stretch; }
+      .topbar .center { order: -1; }
+      .topbar .left, .topbar .right { justify-content: center; }
       .table { font-size: .92rem; }
       .sticky-mobile-actions {
         position: sticky;
@@ -19,24 +38,33 @@
         z-index: 5;
       }
     }
-    .qty-status{ min-height: 18px; }
   </style>
 </head>
 
 <body class="bg-light">
   <div class="container-fluid py-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-      <div>
-        <h3 class="mb-0">{{ engineer_email }}</h3>
-        <div class="text-muted">
-          Run: <strong>{{ run_name }}</strong><br>
-          Submitted: <strong>{{ submitted_at }}</strong>
+
+    <div class="topbar mb-3">
+      <div class="left">
+        <a class="btn btn-outline-secondary" href="{{ url_for('stocktake_leader_dashboard') }}">Back</a>
+        <a class="btn btn-outline-dark" href="{{ url_for('stocktake_leader_export_engineer', stocktake_id=stocktake_id) }}">Export CSV</a>
+      </div>
+
+      <div class="center">
+        <h3 class="mb-0">Edit Stocktake</h3>
+        <div class="muted small mono">{{ engineer_email }}</div>
+        <div class="muted small">
+          {% if submitted_at != "—" %}
+            Stocktake date: <strong>{{ submitted_at }}</strong>
+          {% else %}
+            <strong>StockTake In progress</strong>
+          {% endif %}
+          · Run: <strong>{{ run_name }}</strong>
         </div>
       </div>
 
-      <div class="d-flex gap-2">
-        <a class="btn btn-outline-secondary" href="{{ url_for('stocktake_leader_dashboard') }}">Back</a>
-        <a class="btn btn-outline-dark" href="{{ url_for('stocktake_leader_export_engineer', stocktake_id=stocktake_id) }}">Export CSV</a>
+      <div class="right">
+        <a class="btn btn-outline-secondary" href="{{ url_for('landing') }}">Home</a>
       </div>
     </div>
 
@@ -55,25 +83,32 @@
           <div class="card-body p-3 p-md-4">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h5 class="mb-0">Add Items</h5>
-              <span class="small text-muted">Leader can edit submissions</span>
+              <span class="small muted">Leader can edit submissions</span>
             </div>
 
-            <form class="row g-2 align-items-end" method="GET" action="{{ url_for('stocktake_leader_edit_engineer', stocktake_id=stocktake_id) }}">
+            <form class="row g-2 align-items-end"
+                  method="GET"
+                  action="{{ url_for('stocktake_leader_edit_engineer', stocktake_id=stocktake_id) }}"
+                  id="leaderFilterForm"
+                  data-add-url-template="{{ url_for('stocktake_leader_add_item', stocktake_id=stocktake_id, part_number='__PN__') }}">
+
               <div class="col-12 col-md-6">
                 <label class="form-label mb-1">Search</label>
-                <input class="form-control" name="search" value="{{ search }}" placeholder="part number, description, make...">
+                <input class="form-control" id="leaderPartsSearch" name="search" value="{{ search }}" placeholder="part number, description, make...">
               </div>
+
               <div class="col-12 col-md-4">
                 <label class="form-label mb-1">Category</label>
-                <select class="form-select" name="category">
+                <select class="form-select" id="leaderCategorySelect" name="category">
                   <option value="">All categories</option>
                   {% for c in categories %}
                     <option value="{{ c }}" {% if c == selected_category %}selected{% endif %}>{{ c }}</option>
                   {% endfor %}
                 </select>
               </div>
+
               <div class="col-12 col-md-2 d-grid">
-                <button class="btn btn-outline-dark">Filter</button>
+                <button class="btn btn-outline-dark" type="button" id="leaderSearchBtn">Search</button>
               </div>
             </form>
 
@@ -88,7 +123,8 @@
                     <th style="width: 120px;"></th>
                   </tr>
                 </thead>
-                <tbody>
+
+                <tbody id="leaderPartsTbody">
                   {% for p in parts %}
                     <tr>
                       <td><strong>{{ p.part_number }}</strong></td>
@@ -112,7 +148,7 @@
         </div>
       </div>
 
-      <!-- RIGHT: current engineer stocktake -->
+      <!-- RIGHT: engineer items -->
       <div class="col-12 col-xl-5">
         <div class="card shadow-sm border-0 rounded-4">
           <div class="card-body p-3 p-md-4">
@@ -123,13 +159,12 @@
 
             <hr class="my-3">
 
-            <!-- Desktop/tablet -->
             <div class="table-responsive d-none d-md-block">
               <table class="table table-sm align-middle mb-0">
                 <thead class="table-light">
                   <tr>
                     <th>Part</th>
-                    <th style="width:160px;">Qty</th>
+                    <th style="width:190px;">Qty</th>
                     <th style="width:110px;"></th>
                   </tr>
                 </thead>
@@ -142,11 +177,15 @@
                         <div class="small text-muted qty-status" id="status-{{ it.part_number|replace(' ', '_') }}"></div>
                       </td>
                       <td>
-                        <input type="number" min="0" value="{{ it.quantity }}"
-                               class="form-control form-control-sm qty-input"
-                               data-status-id="status-{{ it.part_number|replace(' ', '_') }}"
-                               data-row-id="row-{{ it.part_number|replace(' ', '_') }}"
-                               data-url="{{ url_for('stocktake_leader_update_item', stocktake_id=stocktake_id, part_number=it.part_number) }}">
+                        <div class="input-group input-group-sm">
+                          <button class="btn btn-outline-secondary qty-btn qty-minus" type="button">−</button>
+                          <input type="number" min="0" value="{{ it.quantity }}"
+                                 class="form-control form-control-sm qty-input text-center"
+                                 data-status-id="status-{{ it.part_number|replace(' ', '_') }}"
+                                 data-row-id="row-{{ it.part_number|replace(' ', '_') }}"
+                                 data-url="{{ url_for('stocktake_leader_update_item', stocktake_id=stocktake_id, part_number=it.part_number) }}">
+                          <button class="btn btn-outline-secondary qty-btn qty-plus" type="button">+</button>
+                        </div>
                       </td>
                       <td class="text-end">
                         <a class="btn btn-sm btn-outline-danger"
@@ -156,7 +195,6 @@
                       </td>
                     </tr>
                   {% endfor %}
-
                   {% if items|length == 0 %}
                     <tr><td colspan="3" class="text-center text-muted py-4">No items.</td></tr>
                   {% endif %}
@@ -164,7 +202,6 @@
               </table>
             </div>
 
-            <!-- Mobile cards -->
             <div class="d-md-none">
               {% for it in items %}
                 <div class="bg-white border rounded-4 p-3 mb-2" id="card-{{ it.part_number|replace(' ', '_') }}">
@@ -182,15 +219,18 @@
 
                   <div class="mt-3">
                     <label class="form-label small mb-1">Quantity</label>
-                    <input type="number" min="0" value="{{ it.quantity }}"
-                           class="form-control form-control-sm qty-input"
-                           data-status-id="mstatus-{{ it.part_number|replace(' ', '_') }}"
-                           data-card-id="card-{{ it.part_number|replace(' ', '_') }}"
-                           data-url="{{ url_for('stocktake_leader_update_item', stocktake_id=stocktake_id, part_number=it.part_number) }}">
+                    <div class="input-group input-group-sm">
+                      <button class="btn btn-outline-secondary qty-btn qty-minus" type="button">−</button>
+                      <input type="number" min="0" value="{{ it.quantity }}"
+                             class="form-control form-control-sm qty-input text-center"
+                             data-status-id="mstatus-{{ it.part_number|replace(' ', '_') }}"
+                             data-card-id="card-{{ it.part_number|replace(' ', '_') }}"
+                             data-url="{{ url_for('stocktake_leader_update_item', stocktake_id=stocktake_id, part_number=it.part_number) }}">
+                      <button class="btn btn-outline-secondary qty-btn qty-plus" type="button">+</button>
+                    </div>
                   </div>
                 </div>
               {% endfor %}
-
               {% if items|length == 0 %}
                 <div class="text-center text-muted py-4">No items.</div>
               {% endif %}
@@ -204,102 +244,4 @@
                 <a class="btn btn-outline-secondary btn-lg" href="{{ url_for('stocktake_leader_dashboard') }}">
                   Back
                 </a>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <script>
-    (function () {
-      const inputs = document.querySelectorAll(".qty-input");
-      const badge = document.getElementById("itemsCountBadge");
-
-      function setStatus(statusId, text, kind) {
-        const el = document.getElementById(statusId);
-        if (!el) return;
-        el.classList.remove("text-muted", "text-success", "text-danger");
-        if (kind === "ok") el.classList.add("text-success");
-        else if (kind === "bad") el.classList.add("text-danger");
-        else el.classList.add("text-muted");
-        el.textContent = text || "";
-      }
-
-      async function saveQty(inputEl) {
-        const url = inputEl.dataset.url;
-        const statusId = inputEl.dataset.statusId;
-        const rowId = inputEl.dataset.rowId;
-        const cardId = inputEl.dataset.cardId;
-
-        const raw = inputEl.value;
-        if (raw === "") {
-          setStatus(statusId, "Enter a quantity…", "muted");
-          return;
-        }
-
-        setStatus(statusId, "Saving…", "muted");
-
-        try {
-          const body = new URLSearchParams();
-          body.set("quantity", raw);
-
-          const res = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              "X-Requested-With": "XMLHttpRequest"
-            },
-            body
-          });
-
-          if (!res.ok) throw new Error("Request failed");
-          const data = await res.json();
-
-          if (!data.ok) {
-            setStatus(statusId, data.error || "Couldn’t save.", "bad");
-            return;
-          }
-
-          if (data.removed) {
-            if (rowId) {
-              const row = document.getElementById(rowId);
-              if (row) row.remove();
-            }
-            if (cardId) {
-              const card = document.getElementById(cardId);
-              if (card) card.remove();
-            }
-          } else if (typeof data.quantity !== "undefined") {
-            inputEl.value = data.quantity;
-          }
-
-          if (badge && typeof data.items_count !== "undefined") {
-            badge.textContent = `${data.items_count} items`;
-          }
-
-          setStatus(statusId, "Saved ✔", "ok");
-          setTimeout(() => setStatus(statusId, "", "muted"), 1200);
-
-        } catch (e) {
-          setStatus(statusId, "Save failed. Try again.", "bad");
-        }
-      }
-
-      const timers = new WeakMap();
-      inputs.forEach((inputEl) => {
-        const handler = () => {
-          clearTimeout(timers.get(inputEl));
-          const t = setTimeout(() => saveQty(inputEl), 250);
-          timers.set(inputEl, t);
-        };
-        inputEl.addEventListener("input", handler);
-        inputEl.addEventListener("change", handler);
-      });
-    })();
-  </script>
-</body>
-</html>
+                <a class="btn btn-outl
