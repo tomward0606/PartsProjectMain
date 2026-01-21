@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stocktake</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-light">
+  <div class="container py-5" style="max-width: 720px;">
+    <div class="card shadow-sm border-0 rounded-4">
+      <div class="card-body p-4 p-md-5">
+        <h3 class="mb-2">Stocktake</h3>
+        <p class="text-muted mb-4">
+          Enter your email username (e.g. <strong>tom</strong>, not tom@servitech.co.uk).
+        </p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('stocktake_start') }}">
+          <div class="input-group input-group-lg mb-3">
+            <input name="email_user" class="form-control" placeholder="email username" required>
+            <span class="input-group-text">@servitech.co.uk</span>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-dark btn-lg">Continue</button>
+            <a class="btn btn-outline-secondary btn-lg" href="{{ url_for('landing') }}">Back</a>
+          </div>
+
+          <hr class="my-4">
+
+          <div class="small text-muted">
+            Tip: You can build your stocktake over time. Only when you press <strong>Final Submit</strong> will it lock.
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

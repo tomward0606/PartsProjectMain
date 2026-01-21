@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review Stocktake</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-light">
+  <div class="container py-5" style="max-width: 900px;">
+    <div class="card shadow-sm border-0 rounded-4">
+      <div class="card-body p-4 p-md-5">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+          <div>
+            <h3 class="mb-0">Review & Final Submit</h3>
+            <div class="text-muted">Engineer: <strong>{{ engineer_email }}</strong> · Run: <strong>{{ run_name }}</strong></div>
+          </div>
+          <a href="{{ url_for('stocktake_page', engineer_email=engineer_email) }}" class="btn btn-outline-secondary">
+            Back to edit
+          </a>
+        </div>
+
+        {% if submitted %}
+          <div class="alert alert-success mt-3">
+            Already submitted on <strong>{{ submitted_at }}</strong>. This is read-only.
+          </div>
+        {% else %}
+          <div class="alert alert-warning mt-3">
+            <strong>Final submission locks your stocktake.</strong><br>
+            Double-check quantities. If you submit by mistake you’ll need the stocktake lead to reopen it.
+          </div>
+        {% endif %}
+
+        <div class="table-responsive mt-3">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Part Number</th>
+                <th>Description</th>
+                <th style="width:120px;">Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for it in items %}
+                <tr>
+                  <td><strong>{{ it.part_number }}</strong></td>
+                  <td class="text-muted">{{ it.description }}</td>
+                  <td>{{ it.quantity }}</td>
+                </tr>
+              {% endfor %}
+              {% if items|length == 0 %}
+                <tr><td colspan="3" class="text-center text-muted py-4">No items to submit.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex flex-wrap justify-content-between align-items-center mt-2">
+          <div class="text-muted">
+            Lines: <strong>{{ items|length }}</strong> · Total quantity: <strong>{{ total_qty }}</strong>
+          </div>
+        </div>
+
+        {% if not submitted %}
+          <hr class="my-4">
+
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              {% for category, message in messages %}
+                <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
+              {% endfor %}
+            {% endif %}
+          {% endwith %}
+
+          <form method="POST" action="{{ url_for('stocktake_submit', engineer_email=engineer_email) }}">
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" value="yes" id="ack" name="ack" required>
+              <label class="form-check-label" for="ack">
+                I understand this submission is final and will lock my stocktake.
+              </label>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Type <strong>SUBMIT</strong> to confirm</label>
+              <input class="form-control" name="confirm_text" placeholder="SUBMIT" required>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button class="btn btn-dark btn-lg" {% if items|length == 0 %}disabled{% endif %}>
+                Final Submit
+              </button>
+              <a href="{{ url_for('stocktake_page', engineer_email=engineer_email) }}" class="btn btn-outline-secondary btn-lg">
+                Cancel
+              </a>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
