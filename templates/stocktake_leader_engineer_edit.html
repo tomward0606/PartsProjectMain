@@ -24,7 +24,14 @@
       <div class="text-center flex-grow-1">
         <div class="fw-semibold">Admin Edit</div>
         <div class="small text-muted">
-          {{ engineer_email }} · Submitted: {{ submitted_at }}
+          {{ engineer_email }}
+          {% if status == 'checked' and checked_at %}
+            · Checked: {{ checked_at }}{% if checked_by %} by {{ checked_by }}{% endif %}
+          {% elif submitted_at and submitted_at != '—' %}
+            · Submitted: {{ submitted_at }}
+          {% else %}
+            · Pending
+          {% endif %}
         </div>
       </div>
 
@@ -40,7 +47,6 @@
         <button type="button" class="btn btn-outline-primary active" id="leadViewAllBtn">All Parts</button>
         <button type="button" class="btn btn-outline-primary" id="leadViewMineBtn">
           My Stocktake
-          <span class="badge bg-dark ms-1" id="leadMineCountBadge">0</span>
         </button>
       </div>
     </div>
@@ -98,7 +104,6 @@
                   <div class="fw-semibold">{{ part.part_number }}</div>
                   <div class="text-muted small st-desc">{{ part.description }}</div>
                 </div>
-                <span class="badge bg-dark lead-qty-badge">{{ current_qty }}</span>
               </div>
 
               <div class="mt-3">
@@ -129,6 +134,41 @@
   {% else %}
     <p class="text-muted">No parts found. Try a different search.</p>
   {% endif %}
+
+  <!-- Admin check-off (sign-off) -->
+  <div class="card shadow-sm border-0 rounded-4 mt-4">
+    <div class="card-body">
+      <h5 class="mb-2">Check-off</h5>
+      {% if status == 'checked' and checked_at %}
+        <div class="alert alert-success mb-3">
+          This stocktake is <strong>CHECKED</strong>
+          {% if checked_by %} by <strong>{{ checked_by }}</strong>{% endif %}
+          on <strong>{{ checked_at }}</strong>.
+        </div>
+      {% else %}
+        <p class="text-muted mb-3">
+          When you've reviewed this stocktake, enter your name and mark it as checked.
+        </p>
+        <form method="POST" action="{{ url_for('stocktake_leader_check', stocktake_id=stocktake_id) }}" class="row g-2 align-items-end">
+          <div class="col-12 col-md-8">
+            <label class="form-label">Checked by</label>
+            <input name="checked_by" class="form-control" placeholder="Your name" required>
+          </div>
+          <div class="col-12 col-md-4">
+            <button class="btn btn-success w-100"
+                    onclick="return confirm('Mark this stocktake as CHECKED?');">
+              Mark as Checked
+            </button>
+          </div>
+        </form>
+        <div class="small text-muted mt-2">
+          Status colours: <span class="badge bg-danger">Pending</span>
+          <span class="badge bg-warning text-dark">Submitted</span>
+          <span class="badge bg-success">Checked</span>
+        </div>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
 <!-- Bottom toast -->

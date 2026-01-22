@@ -31,7 +31,7 @@
 
       <div class="text-center flex-grow-1">
         <div class="fw-semibold">Stocktake Admin</div>
-        <div class="small text-muted">{{ run_name }}</div>
+        <!-- Run name removed (we don't store/display runs in the UI) -->
       </div>
 
       <a href="{{ url_for('stocktake_leader_export_all') }}" class="btn btn-dark btn-sm">
@@ -57,7 +57,7 @@
       {% for s in submissions %}
         {# short email (before @) #}
         {% set short_email = (s.engineer_email.split('@')[0]) if s.engineer_email else 'unknown' %}
-        {% set is_submitted = true if s.submitted_at else false %}
+        {% set st_status = (s.status or '')|lower %}
 
         <div class="col-12 col-md-6 col-xl-4">
           <div class="card shadow-sm border-0 rounded-4 h-100">
@@ -71,18 +71,23 @@
                   </div>
                 </div>
 
-                {% if is_submitted %}
-                  <span class="badge bg-success status-pill">Submitted</span>
+                {% if st_status == 'checked' %}
+                  <span class="badge bg-success status-pill">Checked</span>
+                {% elif st_status == 'submitted' %}
+                  <span class="badge bg-warning text-dark status-pill">Submitted</span>
                 {% else %}
-                  <span class="badge bg-warning text-dark status-pill">Pending</span>
+                  <span class="badge bg-danger status-pill">Pending</span>
                 {% endif %}
               </div>
 
               <div class="small text-muted mt-2">
-                {% if is_submitted %}
+                {% if s.submitted_at %}
                   Submitted at: <strong>{{ s.submitted_at }}</strong>
                 {% else %}
                   Not submitted yet
+                {% endif %}
+                {% if s.checked_at %}
+                  <br>Checked: <strong>{{ s.checked_at }}</strong>{% if s.checked_by %} by <strong>{{ s.checked_by }}</strong>{% endif %}
                 {% endif %}
                 · Lines: <strong>{{ s.lines }}</strong>
               </div>

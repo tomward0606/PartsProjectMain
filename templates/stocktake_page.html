@@ -13,6 +13,7 @@
   data-engineer="{{ engineer_email }}"
   data-submitted="{{ '1' if submitted else '0' }}"
   data-set-url-template="{{ url_for('stocktake_set_item_qty', engineer_email=engineer_email, part_number='__PN__') }}"
+  data-counts-url="{{ url_for('stocktake_counts_api', engineer_email=engineer_email) }}"
 >
 
 <header class="sticky-top stocktake-header">
@@ -46,7 +47,6 @@
         <button type="button" class="btn btn-outline-primary active" id="viewAllBtn">All Parts</button>
         <button type="button" class="btn btn-outline-primary" id="viewMineBtn">
           My Stocktake
-          <span class="badge bg-dark ms-1" id="mineCountBadge">0</span>
         </button>
       </div>
     </div>
@@ -115,7 +115,7 @@
                 {% if submitted %}
                   <span class="badge bg-secondary">Locked</span>
                 {% else %}
-                  <span class="badge bg-dark st-qty-badge">{{ current_qty }}</span>
+
                 {% endif %}
               </div>
 
@@ -160,7 +160,31 @@
       <button type="button" class="btn-close btn-close-white me-2 m-auto" id="stToastClose"></button>
     </div>
   </div>
-</div>
+<script>
+  // Simple remote count: keeps the "My Stocktake" badge in sync with the server.
+  (function () {
+    const body = document.body;
+    const url = body.dataset.countsUrl;
+    const badge = document.getElementById('mineCountBadge');
+    if (!url || !badge) return;
+
+    async function refreshCounts() {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        const data = await res.json();
+        if (!data || data.ok !== true) return;
+
+        // "items in the box" = total quantity across all selected parts
+        badge.textContent = String(data.total_qty ?? data.total_qty === 0 ? data.total_qty : (data.total_qty || 0));
+      } catch (e) {
+        // silent
+      }
+    }
+
+    refreshCounts();
+    setInterval(refreshCounts, 2500);
+  })();
+</script>
 
 </body>
 </html>
