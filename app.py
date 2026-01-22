@@ -649,6 +649,12 @@ def stocktake_page(engineer_email):
         .all()
     )
 
+    # remember last engineer on this device/browser
+    session["last_stocktake_email"] = engineer_email.lower()
+
+    # map of qtys for fast UI display in catalogue list
+    item_qty_map = {it.part_number: int(it.quantity or 0) for it in items}
+
     return render_template(
         "stocktake_page.html",
         engineer_email=engineer_email.lower(),
@@ -660,6 +666,7 @@ def stocktake_page(engineer_email):
         selected_category=category,
         search=search,
         items=items,
+        item_qty_map=item_qty_map,
     )
 
 
@@ -764,6 +771,59 @@ def stocktake_remove_item(engineer_email, part_number):
         db.session.commit()
 
     return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+
+@app.route("/stocktake/<engineer_email>/set/<path:part_number>", methods=["POST"])
+def stocktake_set_item_qty(engineer_email, part_number):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+
+    if not st:
+        return jsonify({"ok": False, "error": "Stocktake not found."}), 404
+
+    if st.status == "submitted":
+        return jsonify({"ok": False, "error": "This stocktake is submitted and locked."}), 400
+
+    try:
+        qty = int(request.form.get("quantity", 0))
+    except ValueError:
+        qty = 0
+    qty = max(0, qty)
+
+    part = next((p for p in parts_db if p["part_number"] == part_number), None)
+    if not part:
+        return jsonify({"ok": False, "error": "Part not found."}), 404
+
+    item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=part_number).first()
+
+    removed = False
+    if qty <= 0:
+        if item:
+            db.session.delete(item)
+            removed = True
+    else:
+        if item:
+            item.quantity = qty
+        else:
+            item = StocktakeItem(
+                stocktake_id=st.id,
+                part_number=part_number,
+                description=part.get("description", ""),
+                quantity=qty
+            )
+            db.session.add(item)
+
+    db.session.commit()
+
+    items_count = StocktakeItem.query.filter_by(stocktake_id=st.id).count()
+
+    return jsonify({
+        "ok": True,
+        "part_number": part_number,
+        "quantity": 0 if removed else qty,
+        "removed": removed,
+        "items_count": items_count,
+    })
 
 
 @app.route("/stocktake/<engineer_email>/review", methods=["GET"])
@@ -1050,6 +1110,8 @@ def stocktake_leader_edit_engineer(stocktake_id):
 
     items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
 
+    item_qty_map = {it.part_number: int(it.quantity or 0) for it in items}
+
     return render_template(
         "stocktake_leader_engineer_edit.html",
         stocktake_id=st.id,
@@ -1057,6 +1119,7 @@ def stocktake_leader_edit_engineer(stocktake_id):
         run_name=run.name,
         submitted_at=st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else "—",
         items=items,
+        item_qty_map=item_qty_map,
         parts=filtered,
         categories=get_categories(parts),
         selected_category=category,
@@ -1137,6 +1200,90 @@ def stocktake_leader_update_item(stocktake_id, part_number):
         "quantity": None if removed else qty,
         "items_count": items_count
     })
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/set/<path:part_number>", methods=["POST"])
+def stocktake_leader_set_item_qty(stocktake_id, part_number):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    st = Stocktake.query.get_or_404(stocktake_id)
+
+    try:
+        qty = int(request.form.get("quantity", 0))
+    except ValueError:
+        qty = 0
+    qty = max(0, qty)
+
+    part = next((p for p in parts_db if p["part_number"] == part_number), None)
+    if not part:
+        return jsonify({"ok": False, "error": "Part not found."}), 404
+
+    item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=part_number).first()
+
+    removed = False
+    if qty <= 0:
+        if item:
+            db.session.delete(item)
+            removed = True
+    else:
+        if item:
+            item.quantity = qty
+        else:
+            db.session.add(StocktakeItem(
+                stocktake_id=st.id,
+                part_number=part_number,
+                description=part.get("description", ""),
+                quantity=qty
+            ))
+
+    db.session.commit()
+
+    items_count = StocktakeItem.query.filter_by(stocktake_id=st.id).count()
+    return jsonify({
+        "ok": True,
+        "removed": removed,
+        "quantity": 0 if removed else qty,
+        "items_count": items_count
+    })
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/unlock", methods=["POST"])
+def stocktake_leader_unlock(stocktake_id):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    st = Stocktake.query.get_or_404(stocktake_id)
+
+    # unlock (draft again)
+    st.status = "draft"
+    st.submitted_at = None
+
+    db.session.commit()
+    flash(f"Unlocked {st.engineer_email} stocktake.", "success")
+    return redirect(url_for("stocktake_leader_dashboard"))
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/reset", methods=["POST"])
+def stocktake_leader_reset(stocktake_id):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    st = Stocktake.query.get_or_404(stocktake_id)
+
+    # delete all items for that stocktake
+    StocktakeItem.query.filter_by(stocktake_id=st.id).delete(synchronize_session=False)
+
+    # unlock (draft again)
+    st.status = "draft"
+    st.submitted_at = None
+
+    db.session.commit()
+    flash(f"Reset (cleared) {st.engineer_email} stocktake.", "warning")
+    return redirect(url_for("stocktake_leader_dashboard"))
 
 
 # CSV export helper and routes for stocktake leader
