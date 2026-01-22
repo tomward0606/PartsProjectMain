@@ -143,8 +143,12 @@ class Stocktake(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     run_id = db.Column(db.Integer, db.ForeignKey("stocktake_run.id"), nullable=False)
     engineer_email = db.Column(db.String(120), nullable=False)
-    status = db.Column(db.String(20), default="draft", nullable=False)  # draft | submitted
+    # draft (pending) | submitted | checked
+    status = db.Column(db.String(20), default="draft", nullable=False)
     submitted_at = db.Column(db.DateTime, nullable=True)
+    # Admin check-off
+    checked_by = db.Column(db.String(120), nullable=True)
+    checked_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     run = db.relationship("StocktakeRun", backref="stocktakes")
@@ -268,6 +272,14 @@ def get_or_create_active_stocktake_run() -> StocktakeRun:
     db.session.add(run)
     db.session.commit()
     return run
+
+
+def stocktake_counts(stocktake_id: int):
+    """Return (lines_count, total_qty) for a stocktake."""
+    items = StocktakeItem.query.filter_by(stocktake_id=stocktake_id).all()
+    lines = len(items)
+    total_qty = sum(int(getattr(i, "quantity", 0) or 0) for i in items)
+    return lines, total_qty
 
 def stocktake_leader_email() -> str:
     # Configure in environment on Render
@@ -655,6 +667,9 @@ def stocktake_page(engineer_email):
     # map of qtys for fast UI display in catalogue list
     item_qty_map = {it.part_number: int(it.quantity or 0) for it in items}
 
+    # counts for badge / remote count display
+    mine_lines, mine_total_qty = stocktake_counts(st.id)
+
     return render_template(
         "stocktake_page.html",
         engineer_email=engineer_email.lower(),
@@ -667,6 +682,8 @@ def stocktake_page(engineer_email):
         search=search,
         items=items,
         item_qty_map=item_qty_map,
+        mine_lines=mine_lines,
+        mine_total_qty=mine_total_qty,
     )
 
 
@@ -815,7 +832,7 @@ def stocktake_set_item_qty(engineer_email, part_number):
 
     db.session.commit()
 
-    items_count = StocktakeItem.query.filter_by(stocktake_id=st.id).count()
+    items_count, total_qty = stocktake_counts(st.id)
 
     return jsonify({
         "ok": True,
@@ -823,7 +840,19 @@ def stocktake_set_item_qty(engineer_email, part_number):
         "quantity": 0 if removed else qty,
         "removed": removed,
         "items_count": items_count,
+        "total_qty": total_qty,
     })
+
+
+@app.route("/stocktake/<engineer_email>/counts")
+def stocktake_counts_api(engineer_email):
+    """Small polling endpoint so the engineer UI can show a live 'items in box' count."""
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        return jsonify({"ok": True, "items_count": 0, "total_qty": 0})
+    items_count, total_qty = stocktake_counts(st.id)
+    return jsonify({"ok": True, "items_count": items_count, "total_qty": total_qty})
 
 
 @app.route("/stocktake/<engineer_email>/review", methods=["GET"])
@@ -877,6 +906,9 @@ def stocktake_submit(engineer_email):
     # Lock it first (so refresh/double-click can’t double-submit)
     st.status = "submitted"
     st.submitted_at = datetime.utcnow()
+    # If it was previously checked, clear check-off so it can be re-checked
+    st.checked_by = None
+    st.checked_at = None
     db.session.commit()
 
     # Build email body
@@ -1030,7 +1062,9 @@ def stocktake_leader_dashboard():
             "engineer_email": st.engineer_email,
             "submitted_at": submitted_at,     # <-- template-friendly
             "lines": len(items),
-            "status": st.status,              # 'draft' or 'submitted' (optional)
+            "status": st.status,
+            "checked_by": st.checked_by,
+            "checked_at": st.checked_at.strftime("%Y-%m-%d %H:%M UTC") if st.checked_at else None,
         })
 
     # Sort: submitted first, then pending, newest submitted first
@@ -1050,27 +1084,12 @@ def stocktake_leader_dashboard():
 
 @app.route("/stocktake-leader/engineer/<int:stocktake_id>")
 def stocktake_leader_view_engineer(stocktake_id):
+    # We use the edit page as the 'view' page now, because admins need
+    # to adjust quantities / add / delete items.
     guard = require_stocktake_leader()
     if guard:
         return guard
-
-    run = get_or_create_active_stocktake_run()
-    st = Stocktake.query.get_or_404(stocktake_id)
-
-    if st.run_id != run.id:
-        flash("That stocktake is not part of the active run.", "warning")
-        return redirect(url_for("stocktake_leader_dashboard"))
-
-    items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
-
-    return render_template(
-        "stocktake_leader_engineer.html",
-        stocktake_id=st.id,
-        engineer_email=st.engineer_email,
-        run_name=run.name,
-        submitted_at=st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else "",
-        items=items
-    )
+    return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
 
 
 @app.route("/stocktake-leader/engineer/<int:stocktake_id>/edit")
@@ -1118,6 +1137,9 @@ def stocktake_leader_edit_engineer(stocktake_id):
         engineer_email=st.engineer_email,
         run_name=run.name,
         submitted_at=st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else "—",
+        status=st.status,
+        checked_by=st.checked_by,
+        checked_at=st.checked_at.strftime("%Y-%m-%d %H:%M UTC") if st.checked_at else None,
         items=items,
         item_qty_map=item_qty_map,
         parts=filtered,
@@ -1260,6 +1282,8 @@ def stocktake_leader_unlock(stocktake_id):
     # unlock (draft again)
     st.status = "draft"
     st.submitted_at = None
+    st.checked_by = None
+    st.checked_at = None
 
     db.session.commit()
     flash(f"Unlocked {st.engineer_email} stocktake.", "success")
@@ -1280,9 +1304,39 @@ def stocktake_leader_reset(stocktake_id):
     # unlock (draft again)
     st.status = "draft"
     st.submitted_at = None
+    st.checked_by = None
+    st.checked_at = None
 
     db.session.commit()
     flash(f"Reset (cleared) {st.engineer_email} stocktake.", "warning")
+    return redirect(url_for("stocktake_leader_dashboard"))
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/check", methods=["POST"])
+def stocktake_leader_check(stocktake_id):
+    """Mark a submitted stocktake as CHECKED and store who checked it + timestamp."""
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    st = Stocktake.query.get_or_404(stocktake_id)
+
+    checker = (request.form.get("checked_by") or "").strip()
+    if not checker:
+        flash("Please enter a name before marking as checked.", "warning")
+        return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    # You can choose to enforce 'submitted first' by uncommenting below.
+    # if st.status != "submitted":
+    #     flash("Only submitted stocktakes can be checked.", "warning")
+    #     return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    st.status = "checked"
+    st.checked_by = checker
+    st.checked_at = datetime.utcnow()
+
+    db.session.commit()
+    flash(f"Marked as checked by {checker}.", "success")
     return redirect(url_for("stocktake_leader_dashboard"))
 
 
