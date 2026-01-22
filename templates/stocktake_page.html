@@ -2,293 +2,165 @@
 <html lang="en">
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Stocktake - {{ engineer_email }}</title>
+  <title>Stocktake</title>
+
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-
-  <style>
-    .muted { color: rgba(0,0,0,.6); }
-    .qty-status { min-height: 18px; }
-    .qty-btn { width: 42px; }
-
-    .topbar {
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      align-items: center;
-      gap: .75rem;
-    }
-    .topbar .left { justify-self: start; display:flex; gap:.5rem; flex-wrap: wrap; }
-    .topbar .center { justify-self: center; text-align:center; }
-    .topbar .right { justify-self: end; display:flex; gap:.5rem; flex-wrap: wrap; }
-
-    @media (max-width: 575.98px) {
-      .topbar { grid-template-columns: 1fr; }
-      .topbar .left, .topbar .right, .topbar .center { justify-self: stretch; }
-      .topbar .center { order: -1; }
-      .topbar .left, .topbar .right { justify-content: center; }
-      .table { font-size: .92rem; }
-      .sticky-mobile-actions {
-        position: sticky;
-        bottom: 0;
-        background: rgba(248,249,250,.95);
-        backdrop-filter: blur(6px);
-        padding: .75rem;
-        border-top: 1px solid rgba(0,0,0,0.08);
-        z-index: 5;
-      }
-    }
-  </style>
+  <script src="{{ url_for('static', filename='script.js') }}" defer></script>
 </head>
 
-<body class="bg-light" data-engineer="{{ engineer_email }}">
-  <div class="container-fluid py-4">
+<body
+  data-engineer="{{ engineer_email }}"
+  data-submitted="{{ '1' if submitted else '0' }}"
+  data-set-url-template="{{ url_for('stocktake_set_item_qty', engineer_email=engineer_email, part_number='__PN__') }}"
+>
 
-    <div class="topbar mb-3">
-      <div class="left">
-        <a href="{{ url_for('landing') }}" class="btn btn-outline-secondary">Home</a>
-      </div>
+<header class="sticky-top stocktake-header">
+  <div class="container-fluid">
 
-      <div class="center">
-        <h3 class="mb-0">Stocktake</h3>
-        <div class="muted small">
-          Engineer: <strong>{{ engineer_email }}</strong> ·
+    <!-- Top row: Home | Title | Review & Submit -->
+    <div class="d-flex justify-content-between align-items-center gap-2 py-2">
+      <a href="{{ url_for('landing') }}" class="btn btn-outline-secondary btn-sm">Home</a>
+
+      <div class="text-center flex-grow-1">
+        <div class="fw-semibold">Stocktake</div>
+        <div class="small text-muted">
+          {{ engineer_email }}
           {% if submitted %}
-            Stocktake date: <strong>{{ submitted_at }}</strong>
+            · Submitted: {{ submitted_at }}
           {% else %}
-            <strong>StockTake In progress</strong>
+            · In progress
           {% endif %}
         </div>
       </div>
 
-      <div class="right">
-        <a href="{{ url_for('stocktake_review', engineer_email=engineer_email) }}" class="btn btn-dark">
-          Review & Submit
-        </a>
+      <a href="{{ url_for('stocktake_review', engineer_email=engineer_email) }}"
+         class="btn btn-dark btn-sm">
+        Review &amp; Submit
+      </a>
+    </div>
+
+    <!-- View toggle -->
+    <div class="d-flex justify-content-between align-items-center gap-2 pb-2">
+      <div class="btn-group" role="group" aria-label="Stocktake view">
+        <button type="button" class="btn btn-outline-primary active" id="viewAllBtn">All Parts</button>
+        <button type="button" class="btn btn-outline-primary" id="viewMineBtn">
+          My Stocktake
+          <span class="badge bg-dark ms-1" id="mineCountBadge">0</span>
+        </button>
       </div>
     </div>
 
     {% if submitted %}
-      <div class="alert alert-success">
-        This stocktake was submitted on <strong>{{ submitted_at }}</strong> and is now locked (read-only).
+      <div class="alert alert-success py-2 mb-2">
+        This stocktake is locked (submitted on <strong>{{ submitted_at }}</strong>).
       </div>
     {% endif %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
+    <!-- Filters row (NO SEARCH BUTTON) -->
+    <form method="get" class="d-flex flex-nowrap gap-2 pb-2" id="stocktakeFilters">
+      <input
+        id="stSearch"
+        type="text"
+        name="search"
+        value="{{ search }}"
+        placeholder="Search parts..."
+        class="form-control"
+        autocomplete="off"
+      >
+      <select id="stCategory" name="category" class="form-select" style="max-width: 190px;">
+        <option value="">All</option>
+        {% for c in categories %}
+          <option value="{{ c }}" {% if c == selected_category %}selected{% endif %}>{{ c }}</option>
         {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    <div class="row g-3">
-      <!-- LEFT: catalogue/search -->
-      <div class="col-12 col-xl-7">
-        <div class="card shadow-sm border-0 rounded-4">
-          <div class="card-body p-3 p-md-4">
-            <form class="row g-2 align-items-end"
-                  method="GET"
-                  action="{{ url_for('stocktake_page', engineer_email=engineer_email) }}"
-                  id="stocktakeFilterForm"
-                  data-submitted="{{ '1' if submitted else '0' }}"
-                  data-add-url-template="{{ url_for('stocktake_add_item', engineer_email=engineer_email, part_number='__PN__') }}">
-
-              <div class="col-12 col-md-6">
-                <label class="form-label mb-1">Search</label>
-                <input class="form-control"
-                       id="partsSearch"
-                       name="search"
-                       value="{{ search }}"
-                       placeholder="Type part number or description...">
-              </div>
-
-              <div class="col-12 col-md-4">
-                <label class="form-label mb-1">Category</label>
-                <select class="form-select" name="category" id="categorySelect">
-                  <option value="">All categories</option>
-                  {% for c in categories %}
-                    <option value="{{ c }}" {% if c == selected_category %}selected{% endif %}>{{ c }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-
-              <div class="col-12 col-md-2 d-grid">
-                <button class="btn btn-outline-dark" type="button" id="searchBtn">Search</button>
-              </div>
-            </form>
-
-            <hr class="my-3">
-
-            <div class="table-responsive" style="max-height: 70vh;">
-              <table class="table table-sm align-middle mb-0" id="partsTable">
-                <thead class="table-light position-sticky top-0">
-                  <tr>
-                    <th style="width: 160px;">Part</th>
-                    <th>Description</th>
-                    <th style="width: 120px;"></th>
-                  </tr>
-                </thead>
-
-                <tbody id="partsTbody">
-                  {% for p in parts %}
-                    <tr>
-                      <td><strong>{{ p.part_number }}</strong></td>
-                      <td class="text-muted">{{ p.description }}</td>
-                      <td class="text-end">
-                        {% if submitted %}
-                          <button class="btn btn-sm btn-secondary" disabled>Locked</button>
-                        {% else %}
-                          <a class="btn btn-sm btn-dark"
-                             href="{{ url_for('stocktake_add_item', engineer_email=engineer_email, part_number=p.part_number) }}">
-                            Add
-                          </a>
-                        {% endif %}
-                      </td>
-                    </tr>
-                  {% endfor %}
-                  {% if parts|length == 0 %}
-                    <tr><td colspan="3" class="text-muted py-4 text-center">No results.</td></tr>
-                  {% endif %}
-                </tbody>
-              </table>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT: current stocktake -->
-      <div class="col-12 col-xl-5">
-        <div class="card shadow-sm border-0 rounded-4">
-          <div class="card-body p-3 p-md-4">
-            <div class="d-flex align-items-center justify-content-between">
-              <h5 class="mb-0">Your Stocktake</h5>
-              <span class="badge bg-dark" id="itemsCountBadge">{{ items|length }} items</span>
-            </div>
-
-            <hr class="my-3">
-
-            <div class="table-responsive d-none d-md-block">
-              <table class="table table-sm align-middle mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th>Part</th>
-                    <th style="width:190px;">Qty</th>
-                    <th style="width:110px;"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for it in items %}
-                    <tr id="row-{{ it.part_number|replace(' ', '_') }}">
-                      <td>
-                        <div><strong>{{ it.part_number }}</strong></div>
-                        <div class="small text-muted">{{ it.description }}</div>
-                        <div class="small text-muted qty-status" id="status-{{ it.part_number|replace(' ', '_') }}"></div>
-                      </td>
-
-                      <td>
-                        {% if submitted %}
-                          <input class="form-control form-control-sm" value="{{ it.quantity }}" disabled>
-                        {% else %}
-                          <div class="input-group input-group-sm">
-                            <button class="btn btn-outline-secondary qty-btn qty-minus" type="button">−</button>
-                            <input type="number" min="0" value="{{ it.quantity }}"
-                                   class="form-control form-control-sm qty-input text-center"
-                                   data-status-id="status-{{ it.part_number|replace(' ', '_') }}"
-                                   data-row-id="row-{{ it.part_number|replace(' ', '_') }}"
-                                   data-url="{{ url_for('stocktake_update_item', engineer_email=engineer_email, part_number=it.part_number) }}">
-                            <button class="btn btn-outline-secondary qty-btn qty-plus" type="button">+</button>
-                          </div>
-                        {% endif %}
-                      </td>
-
-                      <td class="text-end">
-                        {% if submitted %}
-                          <button class="btn btn-sm btn-secondary" disabled>Locked</button>
-                        {% else %}
-                          <a class="btn btn-sm btn-outline-danger"
-                             href="{{ url_for('stocktake_remove_item', engineer_email=engineer_email, part_number=it.part_number) }}">
-                            Remove
-                          </a>
-                        {% endif %}
-                      </td>
-                    </tr>
-                  {% endfor %}
-
-                  {% if items|length == 0 %}
-                    <tr>
-                      <td colspan="3" class="text-muted py-4 text-center">
-                        Nothing added yet. Use search on the left, then press <strong>Add</strong>.
-                      </td>
-                    </tr>
-                  {% endif %}
-                </tbody>
-              </table>
-            </div>
-
-            <div class="d-md-none">
-              {% for it in items %}
-                <div class="bg-white border rounded-4 p-3 mb-2" id="card-{{ it.part_number|replace(' ', '_') }}">
-                  <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div>
-                      <div class="fw-semibold">{{ it.part_number }}</div>
-                      <div class="small text-muted">{{ it.description }}</div>
-                      <div class="small text-muted qty-status" id="mstatus-{{ it.part_number|replace(' ', '_') }}"></div>
-                    </div>
-
-                    {% if submitted %}
-                      <button class="btn btn-sm btn-secondary" disabled>Locked</button>
-                    {% else %}
-                      <a class="btn btn-sm btn-outline-danger"
-                         href="{{ url_for('stocktake_remove_item', engineer_email=engineer_email, part_number=it.part_number) }}">
-                        Remove
-                      </a>
-                    {% endif %}
-                  </div>
-
-                  <div class="mt-3">
-                    <label class="form-label small mb-1">Quantity</label>
-                    {% if submitted %}
-                      <input class="form-control form-control-sm" value="{{ it.quantity }}" disabled>
-                    {% else %}
-                      <div class="input-group input-group-sm">
-                        <button class="btn btn-outline-secondary qty-btn qty-minus" type="button">−</button>
-                        <input type="number" min="0" value="{{ it.quantity }}"
-                               class="form-control form-control-sm qty-input text-center"
-                               data-status-id="mstatus-{{ it.part_number|replace(' ', '_') }}"
-                               data-card-id="card-{{ it.part_number|replace(' ', '_') }}"
-                               data-url="{{ url_for('stocktake_update_item', engineer_email=engineer_email, part_number=it.part_number) }}">
-                        <button class="btn btn-outline-secondary qty-btn qty-plus" type="button">+</button>
-                      </div>
-                    {% endif %}
-                  </div>
-                </div>
-              {% endfor %}
-
-              {% if items|length == 0 %}
-                <div class="text-muted py-4 text-center">
-                  Nothing added yet. Use search above, then press <strong>Add</strong>.
-                </div>
-              {% endif %}
-            </div>
-
-          </div>
-        </div>
-
-        <div class="d-md-none sticky-mobile-actions mt-3 rounded-4 shadow-sm">
-          <div class="d-grid gap-2">
-            <a href="{{ url_for('landing') }}" class="btn btn-outline-secondary btn-lg">Home</a>
-            <a href="{{ url_for('stocktake_review', engineer_email=engineer_email) }}" class="btn btn-dark btn-lg">
-              Review & Submit
-            </a>
-          </div>
-        </div>
-
-      </div>
-    </div>
+      </select>
+    </form>
 
   </div>
+</header>
 
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
+<div class="container mt-3 mb-5">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Empty state for "My Stocktake" view -->
+  <div id="mineEmpty" class="text-muted text-center py-4" style="display:none;">
+    No items selected yet. Tap + on parts to add them.
+  </div>
+
+  {% if parts %}
+    <div class="row g-3" id="stocktakeCardsGrid">
+      {% for part in parts %}
+        {% set current_qty = item_qty_map.get(part.part_number, 0) if item_qty_map is defined else 0 %}
+
+        <div class="col-12 col-md-6">
+          <div class="card h-100 stocktake-part-card"
+               data-part="{{ part.part_number }}"
+               data-desc="{{ part.description|e }}">
+
+            <div class="card-body d-flex flex-column">
+
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <div class="fw-semibold">{{ part.part_number }}</div>
+                  <div class="text-muted small st-desc">{{ part.description }}</div>
+                </div>
+
+                {% if submitted %}
+                  <span class="badge bg-secondary">Locked</span>
+                {% else %}
+                  <span class="badge bg-dark st-qty-badge">{{ current_qty }}</span>
+                {% endif %}
+              </div>
+
+              <div class="mt-3">
+                {% if submitted %}
+                  <input class="form-control text-center" value="{{ current_qty }}" disabled>
+                {% else %}
+                  <div class="d-flex justify-content-center align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-secondary st-minus" aria-label="Decrease">−</button>
+
+                    <input
+                      type="number"
+                      min="0"
+                      value="{{ current_qty }}"
+                      class="form-control text-center st-qty"
+                      inputmode="numeric"
+                      aria-label="Quantity"
+                    >
+
+                    <button type="button" class="btn btn-outline-secondary st-plus" aria-label="Increase">+</button>
+                  </div>
+
+                  <div class="small text-muted text-center mt-2 st-status"></div>
+                {% endif %}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-muted">No parts found. Try a different search.</p>
+  {% endif %}
+</div>
+
+<!-- Bottom toast -->
+<div id="stToast" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999; display:none;">
+  <div class="toast align-items-center text-bg-success border-0 show">
+    <div class="d-flex">
+      <div class="toast-body" id="stToastMsg">Saved</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" id="stToastClose"></button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

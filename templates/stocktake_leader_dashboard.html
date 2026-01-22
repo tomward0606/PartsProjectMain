@@ -2,185 +2,137 @@
 <html lang="en">
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Stocktake Leader Dashboard</title>
+  <title>Stocktake Admin</title>
+
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='script.js') }}" defer></script>
 
   <style>
-    .muted { color: rgba(0,0,0,.6); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-
-    /* True centered title regardless of left/right button widths */
-    .topbar {
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      align-items: center;
-      gap: .75rem;
-    }
-    .topbar .left { justify-self: start; display:flex; gap:.5rem; flex-wrap: wrap; }
-    .topbar .center { justify-self: center; text-align:center; }
-    .topbar .right { justify-self: end; display:flex; gap:.5rem; flex-wrap: wrap; }
-
-    @media (max-width: 575.98px) {
-      .topbar { grid-template-columns: 1fr; }
-      .topbar .left, .topbar .right, .topbar .center { justify-self: stretch; }
-      .topbar .center { order: -1; }
-      .topbar .left, .topbar .right { justify-content: center; }
+    /* phone-first layout */
+    .admin-header { background:#fff; border-bottom:1px solid rgba(0,0,0,0.08); }
+    .email-short { font-weight:600; }
+    .status-pill { font-size: .8rem; }
+    .btn-row { display:flex; flex-wrap:wrap; gap:.5rem; }
+    .btn-row form { display:inline; }
+    @media (max-width: 575.98px){
+      .btn-row { flex-direction: column; }
+      .btn-row .btn { width:100%; }
     }
   </style>
 </head>
 
 <body class="bg-light">
-  {% set _stocktakes =
-      (engineer_stocktakes|default(None)) or
-      (stocktakes|default(None)) or
-      (submissions|default(None)) or
-      (submitted_stocktakes|default(None)) or
-      [] %}
 
-  {% set _run =
-      (run_name|default(None)) or
-      (active_run_name|default(None)) or
-      (run|default(None)) or
-      "StockTake In progress" %}
+<header class="sticky-top admin-header">
+  <div class="container-fluid py-2">
+    <div class="d-flex justify-content-between align-items-center gap-2">
+      <a href="{{ url_for('landing') }}" class="btn btn-outline-secondary btn-sm">Home</a>
 
-  <div class="container-fluid py-4">
-
-    <div class="topbar mb-3">
-      <div class="left">
-        <a class="btn btn-outline-dark" href="{{ url_for('stocktake_leader_export_all') }}">Export All CSV</a>
+      <div class="text-center flex-grow-1">
+        <div class="fw-semibold">Stocktake Admin</div>
+        <div class="small text-muted">{{ run_name }}</div>
       </div>
 
-      <div class="center">
-        <h3 class="mb-0">Stocktake Leader</h3>
-        <div class="muted small">Run: <strong>{{ _run }}</strong></div>
-      </div>
-
-      <div class="right">
-        <a class="btn btn-outline-secondary" href="{{ url_for('landing') }}">Home</a>
-        <a class="btn btn-outline-danger" href="{{ url_for('stocktake_leader_logout') }}">Logout</a>
-      </div>
+      <a href="{{ url_for('stocktake_leader_export_all') }}" class="btn btn-dark btn-sm">
+        Export All CSV
+      </a>
     </div>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    <div class="card shadow-sm border-0 rounded-4">
-      <div class="card-body p-3 p-md-4">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-          <div>
-            <h5 class="mb-0">Individual Stocktakes</h5>
-            <div class="muted small">Yes = submitted, Pending = open/unsubmitted.</div>
-          </div>
-
-          <div class="d-flex flex-wrap gap-2 align-items-center">
-            <input id="leaderSearchBox" class="form-control form-control-sm" style="min-width: 240px;"
-                   placeholder="Search engineer email...">
-            <span class="badge bg-dark">{{ _stocktakes|length }} total</span>
-          </div>
-        </div>
-
-        <hr class="my-3">
-
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0" id="leaderStocktakesTable">
-            <thead class="table-light">
-              <tr>
-                <th style="width: 38%;">Engineer</th>
-                <th style="width: 14%;">Submitted</th>
-                <th style="width: 22%;">Submitted At</th>
-                <th style="width: 10%;">Lines</th>
-                <th style="width: 16%;"></th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {% for s in _stocktakes %}
-                {% set engineer = (s.engineer_email|default(None)) or (s.email|default(None)) or (s.engineer|default(None)) or "—" %}
-                {# pick up submitted_at from common field names #}
-                {% set submitted_at =
-                    (s.submitted_at|default(None)) or
-                    (s.submitted_date|default(None)) or
-                    (s.submittedAt|default(None)) or
-                    None %}
-                {# some codebases store a boolean instead #}
-                {% set submitted_flag =
-                    (s.submitted is defined and s.submitted) or
-                    (s.is_submitted is defined and s.is_submitted) or
-                    false %}
-                {% set is_submitted = (submitted_at is not none) or submitted_flag %}
-                {% set status_text = "Yes" if is_submitted else "Pending" %}
-
-                {% set lines = (s.items_count|default(None)) or (s.lines|default(None)) or (s.line_count|default(None)) or "—" %}
-                {% set sid = (s.id|default(None)) or (s.stocktake_id|default(None)) %}
-
-                <tr class="stocktake-row" data-engineer="{{ engineer|lower }}">
-                  <td class="mono"><strong>{{ engineer }}</strong></td>
-
-                  <td>
-                    {% if is_submitted %}
-                      <span class="badge bg-success">{{ status_text }}</span>
-                    {% else %}
-                      <span class="badge bg-warning text-dark">{{ status_text }}</span>
-                    {% endif %}
-                  </td>
-
-                  <td class="muted">
-                    {% if is_submitted %}
-                      {{ submitted_at }}
-                    {% else %}
-                      —
-                    {% endif %}
-                  </td>
-
-                  <td>{{ lines }}</td>
-
-                  <td class="text-end">
-                    {% if sid %}
-                      <a class="btn btn-sm btn-dark"
-                         href="{{ url_for('stocktake_leader_edit_engineer', stocktake_id=sid) }}">Open</a>
-                      <a class="btn btn-sm btn-outline-dark"
-                         href="{{ url_for('stocktake_leader_export_engineer', stocktake_id=sid) }}">Export</a>
-                    {% else %}
-                      <span class="muted small">Missing ID</span>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-
-              {% if _stocktakes|length == 0 %}
-                <tr>
-                  <td colspan="5" class="text-center muted py-4">No stocktakes yet.</td>
-                </tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-
-      </div>
-    </div>
-
   </div>
+</header>
 
-  <script>
-    (function(){
-      const box = document.getElementById("leaderSearchBox");
-      const rows = document.querySelectorAll(".stocktake-row");
-      if (!box || !rows.length) return;
+<div class="container mt-3 mb-5">
 
-      box.addEventListener("input", () => {
-        const q = (box.value || "").trim().toLowerCase();
-        rows.forEach(r => {
-          const hay = r.getAttribute("data-engineer") || "";
-          r.style.display = (!q || hay.includes(q)) ? "" : "none";
-        });
-      });
-    })();
-  </script>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% if submissions and submissions|length > 0 %}
+    <div class="row g-3">
+
+      {% for s in submissions %}
+        {# short email (before @) #}
+        {% set short_email = (s.engineer_email.split('@')[0]) if s.engineer_email else 'unknown' %}
+        {% set is_submitted = true if s.submitted_at else false %}
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-body">
+
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <div class="email-short">{{ short_email }}</div>
+                  <div class="small text-muted">
+                    {% if s.engineer_email %}{{ s.engineer_email }}{% endif %}
+                  </div>
+                </div>
+
+                {% if is_submitted %}
+                  <span class="badge bg-success status-pill">Submitted</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark status-pill">Pending</span>
+                {% endif %}
+              </div>
+
+              <div class="small text-muted mt-2">
+                {% if is_submitted %}
+                  Submitted at: <strong>{{ s.submitted_at }}</strong>
+                {% else %}
+                  Not submitted yet
+                {% endif %}
+                · Lines: <strong>{{ s.lines }}</strong>
+              </div>
+
+              <hr class="my-3">
+
+              <div class="btn-row">
+                <!-- View/Edit -->
+                <a class="btn btn-outline-primary btn-sm"
+                   href="{{ url_for('stocktake_leader_view_engineer', stocktake_id=s.id) }}">
+                  Open
+                </a>
+
+                <!-- Export individual -->
+                <a class="btn btn-outline-dark btn-sm"
+                   href="{{ url_for('stocktake_leader_export_engineer', stocktake_id=s.id) }}">
+                  Export CSV
+                </a>
+
+                <!-- Unlock -->
+                <form method="post" action="{{ url_for('stocktake_leader_unlock', stocktake_id=s.id) }}">
+                  <button class="btn btn-outline-secondary btn-sm"
+                          onclick="return confirm('Unlock this stocktake so it can be edited/resubmitted?');">
+                    Unlock
+                  </button>
+                </form>
+
+                <!-- Reset -->
+                <form method="post" action="{{ url_for('stocktake_leader_reset', stocktake_id=s.id) }}">
+                  <button class="btn btn-outline-danger btn-sm"
+                          onclick="return confirm('RESET will clear ALL items for this engineer. Continue?');">
+                    Reset
+                  </button>
+                </form>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      {% endfor %}
+    </div>
+
+  {% else %}
+    <div class="text-muted text-center py-5">
+      No stocktakes found for this run yet.
+    </div>
+  {% endif %}
+
+</div>
+
 </body>
 </html>
