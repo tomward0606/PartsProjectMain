@@ -267,7 +267,7 @@ def get_or_create_active_stocktake_run() -> StocktakeRun:
     if run:
         return run
     # Create a default active run if none exists
-    run_name = f"Stocktake {datetime.utcnow().strftime('%Y')}"
+    run_name = "January 2026"
     run = StocktakeRun(name=run_name, is_active=True)
     db.session.add(run)
     db.session.commit()
@@ -1082,6 +1082,25 @@ def stocktake_leader_dashboard():
     )
 
 
+@app.route("/stocktake-leader/update-run-name", methods=["POST"])
+def stocktake_leader_update_run_name():
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    run = get_or_create_active_stocktake_run()
+    new_name = (request.form.get("run_name") or "").strip()
+    
+    if not new_name:
+        flash("Run name cannot be empty.", "warning")
+        return redirect(url_for("stocktake_leader_dashboard"))
+    
+    run.name = new_name
+    db.session.commit()
+    flash(f"Stock take name updated to '{new_name}'.", "success")
+    return redirect(url_for("stocktake_leader_dashboard"))
+
+
 @app.route("/stocktake-leader/engineer/<int:stocktake_id>")
 def stocktake_leader_view_engineer(stocktake_id):
     # We use the edit page as the 'view' page now, because admins need
@@ -1290,25 +1309,29 @@ def stocktake_leader_unlock(stocktake_id):
     return redirect(url_for("stocktake_leader_dashboard"))
 
 
-@app.route("/stocktake-leader/engineer/<int:stocktake_id>/reset", methods=["POST"])
-def stocktake_leader_reset(stocktake_id):
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/delete", methods=["POST"])
+def stocktake_leader_delete(stocktake_id):
     guard = require_stocktake_leader()
     if guard:
         return guard
 
     st = Stocktake.query.get_or_404(stocktake_id)
 
-    # delete all items for that stocktake
+    # Only allow delete if status is submitted or checked, not if pending (draft)
+    if st.status == "draft":
+        flash("Cannot delete a pending stocktake. It must be submitted first.", "warning")
+        return redirect(url_for("stocktake_leader_dashboard"))
+
+    engineer_email = st.engineer_email
+    
+    # Delete all items for that stocktake (cascade handles this, but be explicit)
     StocktakeItem.query.filter_by(stocktake_id=st.id).delete(synchronize_session=False)
-
-    # unlock (draft again)
-    st.status = "draft"
-    st.submitted_at = None
-    st.checked_by = None
-    st.checked_at = None
-
+    
+    # Delete the stocktake itself
+    db.session.delete(st)
     db.session.commit()
-    flash(f"Reset (cleared) {st.engineer_email} stocktake.", "warning")
+    
+    flash(f"Deleted stocktake for {engineer_email}.", "success")
     return redirect(url_for("stocktake_leader_dashboard"))
 
 
