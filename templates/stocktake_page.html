@@ -19,6 +19,14 @@
 <header class="sticky-top stocktake-header">
   <div class="container-fluid">
 
+    <!-- Run name row -->
+    <div class="py-2 border-bottom">
+      <div class="d-flex justify-content-between align-items-center gap-2">
+        <span class="text-muted small">Name of Stock Take:</span>
+        <div class="fw-semibold">{{ run_name }}</div>
+      </div>
+    </div>
+
     <!-- Top row: Home | Title | Review & Submit -->
     <div class="d-flex justify-content-between align-items-center gap-2 py-2">
       <a href="{{ url_for('landing') }}" class="btn btn-outline-secondary btn-sm">Home</a>
@@ -46,7 +54,7 @@
       <div class="btn-group" role="group" aria-label="Stocktake view">
         <button type="button" class="btn btn-outline-primary active" id="viewAllBtn">All Parts</button>
         <button type="button" class="btn btn-outline-primary" id="viewMineBtn">
-          My Stocktake
+          Stocktake
         </button>
       </div>
     </div>
