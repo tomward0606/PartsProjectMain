@@ -100,19 +100,6 @@ function hideToast() {
     // Only attach if page contains the elements
     if (!searchInput || !categorySelect || !tbody) return;
 
-    let t = null;
-    function schedule() {
-      clearTimeout(t);
-      t = setTimeout(function () {
-        fetchPartsIntoTable({ searchInput, categorySelect, tbody, addUrlTemplate, submitted });
-      }, 150);
-    }
-
-    searchInput.addEventListener("input", schedule);
-    categorySelect.addEventListener("change", function () {
-      fetchPartsIntoTable({ searchInput, categorySelect, tbody, addUrlTemplate, submitted });
-    });
-
     if (btn) btn.addEventListener("click", function () {
       fetchPartsIntoTable({ searchInput, categorySelect, tbody, addUrlTemplate, submitted });
     });
@@ -861,57 +848,8 @@ function hideToast() {
 
 
 /* =========================
-   Stocktake filters: auto-submit + reset category on "My Stocktake"
-   Paste at bottom of static/script.js
+   Stocktake filters: submit only on button press
    ========================= */
-(function () {
-  const form = document.getElementById("stocktakeFilters");
-  const search = document.getElementById("stSearch");
-  const category = document.getElementById("stCategory");
-  const mineBtn = document.getElementById("viewMineBtn");
-
-  if (!form || !search || !category) return;
-
-  // Debounce helper
-  function debounce(fn, ms) {
-    let t = null;
-    return function (...args) {
-      if (t) clearTimeout(t);
-      t = setTimeout(() => fn.apply(this, args), ms);
-    };
-  }
-
-  // Auto submit on typing (small delay so it doesn't spam)
-  const submitSoon = debounce(() => {
-    // preserve cursor/typing experience: only submit if value actually changed recently
-    form.requestSubmit ? form.requestSubmit() : form.submit();
-  }, 350);
-
-  search.addEventListener("input", () => {
-    submitSoon();
-  });
-
-  // Submit instantly on category change
-  category.addEventListener("change", () => {
-    form.requestSubmit ? form.requestSubmit() : form.submit();
-  });
-
-  // Clicking "My Stocktake" resets category to All and submits
-  if (mineBtn) {
-    mineBtn.addEventListener("click", () => {
-      if (category.value !== "") {
-        category.value = ""; // All
-      }
-      // also clear the saved filter so it doesn't jump back
-      try {
-        const engineer = document.body?.dataset?.engineer || "";
-        if (engineer) localStorage.setItem("st_filters_" + engineer, JSON.stringify({ search: search.value || "", category: "" }));
-      } catch(e) {}
-
-      form.requestSubmit ? form.requestSubmit() : form.submit();
-    });
-  }
-})();
 
 
 /* =========================
@@ -952,34 +890,7 @@ function hideToast() {
   }
   if (toastClose && toast) toastClose.addEventListener("click", () => (toast.style.display = "none"));
 
-  // ---- debounce
-  function debounce(fn, ms) {
-    let t = null;
-    return function (...args) {
-      if (t) clearTimeout(t);
-      t = setTimeout(() => fn.apply(this, args), ms);
-    };
-  }
-
-  // ---- auto-submit filters (no search button)
-  if (form && search && category) {
-    const submitSoon = debounce(() => {
-      form.requestSubmit ? form.requestSubmit() : form.submit();
-    }, 350);
-
-    search.addEventListener("input", () => submitSoon());
-    category.addEventListener("change", () => {
-      form.requestSubmit ? form.requestSubmit() : form.submit();
-    });
-
-    // My Stocktake should reset category to All and submit (avoid confusion)
-    if (mineBtn) {
-      mineBtn.addEventListener("click", () => {
-        if (category.value !== "") category.value = "";
-        form.requestSubmit ? form.requestSubmit() : form.submit();
-      });
-    }
-  }
+  // ---- filters now submit only when the Search button is pressed
 
   // ---- view toggle (client-side filter to qty>0)
   const viewKey = "lead_view_" + stocktakeId;
@@ -1018,7 +929,7 @@ function hideToast() {
   if (mineBtn) mineBtn.addEventListener("click", () => setView("mine"));
 
   const startView = (() => {
-    try { return localStorage.getItem(viewKey) || "all"; } catch (e) { return "all"; }
+    try { return localStorage.getItem(viewKey) || "mine"; } catch (e) { return "mine"; }
   })();
   setView(startView);
 
