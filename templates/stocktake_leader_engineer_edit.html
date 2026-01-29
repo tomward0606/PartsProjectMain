@@ -59,7 +59,7 @@
       </div>
     </div>
 
-    <!-- Filters row (NO SEARCH BUTTON) -->
+    <!-- Filters row -->
     <form method="get" class="d-flex flex-nowrap gap-2 pb-2" id="leadStocktakeFilters">
       <input
         id="leadSearch"
@@ -76,6 +76,7 @@
           <option value="{{ c }}" {% if c == selected_category %}selected{% endif %}>{{ c }}</option>
         {% endfor %}
       </select>
+      <button type="submit" class="btn btn-primary" id="leadSearchBtn">Search</button>
     </form>
 
   </div>
@@ -143,29 +144,29 @@
     <p class="text-muted">No parts found. Try a different search.</p>
   {% endif %}
 
-  <!-- Admin check-off (sign-off) -->
+  <!-- Admin review (sign-off) -->
   <div class="card shadow-sm border-0 rounded-4 mt-4">
     <div class="card-body">
-      <h5 class="mb-2">Check-off</h5>
+      <h5 class="mb-2">Reviewed</h5>
       {% if status == 'checked' and checked_at %}
         <div class="alert alert-success mb-3">
-          This stocktake is <strong>CHECKED</strong>
+          This stocktake is <strong>REVIEWED</strong>
           {% if checked_by %} by <strong>{{ checked_by }}</strong>{% endif %}
           on <strong>{{ checked_at }}</strong>.
         </div>
       {% else %}
         <p class="text-muted mb-3">
-          When you've reviewed this stocktake, enter your name and mark it as checked.
+          When you've reviewed this stocktake, enter your name and mark it as reviewed.
         </p>
         <form method="POST" action="{{ url_for('stocktake_leader_check', stocktake_id=stocktake_id) }}" class="row g-2 align-items-end">
           <div class="col-12 col-md-8">
-            <label class="form-label">Checked by</label>
+            <label class="form-label">Reviewed by</label>
             <input name="checked_by" class="form-control" placeholder="Your name" required>
           </div>
           <div class="col-12 col-md-4">
             <button class="btn btn-success w-100"
-                    onclick="return confirm('Mark this stocktake as CHECKED?');">
-              Mark as Checked
+                    onclick="return confirm('Mark this stocktake as REVIEWED?');">
+              Mark as Reviewed
             </button>
           </div>
         </form>

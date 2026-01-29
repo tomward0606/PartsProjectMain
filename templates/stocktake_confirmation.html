@@ -12,8 +12,7 @@
       <div class="card-body p-4">
         <h3 class="mb-2">Stocktake Submitted</h3>
         <p class="mb-3">Your stocktake has been sent and is now locked. You’ll receive a copy via email.</p>
-        <div class="text-muted small mb-3">
-          Engineer: <strong>{{ engineer_email }}</strong><br>
+        <div class="text-muted small mb-3">          Stocktake: <strong>{{ run_name }}</strong><br>          Engineer: <strong>{{ engineer_email }}</strong><br>
           Submitted: <strong>{{ submitted_at }}</strong>
         </div>
         <a href="{{ url_for('landing') }}" class="btn btn-dark">Back to Home</a>
