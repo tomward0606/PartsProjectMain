@@ -17,16 +17,16 @@
       <a href="{{ url_for('view_parts_basket') }}" class="btn btn-success">Basket</a>
     </div>
 
-    <form method="get" class="d-flex flex-nowrap gap-2">
+    <form method="get" class="d-flex flex-nowrap gap-2" id="catalogueFiltersForm">
       <input type="hidden" name="role" value="{{ engineer_role }}">
-      <select name="category" onchange="this.form.submit()" class="form-select category-select">
+      <select name="category" class="form-select category-select" id="catalogueCategory">
         <option value="">All Categories</option>
         {% for cat in categories %}
           <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
         {% endfor %}
       </select>
       <div class="input-group">
-        <input type="text" name="search" value="{{ search }}" placeholder="Search parts or codes..." class="form-control" list="search-suggestions">
+        <input type="text" name="search" value="{{ search }}" placeholder="Search parts or codes..." class="form-control" list="search-suggestions" id="catalogueSearch">
         <datalist id="search-suggestions">
           {% for part in parts %}
             <option value="{{ part.part_number }}">{{ part.description }}</option>
@@ -80,6 +80,20 @@
     </div>
   </div>
 </div>
+
+<script>
+  (function () {
+    const categorySelect = document.getElementById('catalogueCategory');
+    const searchInput = document.getElementById('catalogueSearch');
+    const form = document.getElementById('catalogueFiltersForm');
+    if (!categorySelect || !searchInput || !form) return;
+
+    categorySelect.addEventListener('change', function () {
+      searchInput.value = '';
+      form.submit();
+    });
+  })();
+</script>
 
 </body>
 </html>

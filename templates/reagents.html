@@ -16,8 +16,8 @@
       <h3>Reagents</h3>
       <a href="{{ url_for('view_reagents_basket') }}" class="btn btn-success">Basket</a>
     </div>
-    <form method="get" class="d-flex flex-nowrap gap-2">
-      <input type="text" name="search" value="{{ search }}" placeholder="Search reagents..." class="form-control">
+    <form method="get" class="d-flex flex-nowrap gap-2" id="reagentsFiltersForm">
+      <input type="text" name="search" value="{{ search }}" placeholder="Search reagents..." class="form-control" id="reagentsSearch">
       <button type="submit" class="btn btn-primary">Search</button>
     </form>
   </div>
@@ -56,6 +56,20 @@
     <p>No reagents found. Try a different search.</p>
   {% endif %}
 </div>
+
+<script>
+  (function () {
+    const form = document.getElementById('reagentsFiltersForm');
+    const searchInput = document.getElementById('reagentsSearch');
+    const categorySelect = document.querySelector('#reagentsFiltersForm select[name="category"]');
+    if (!form || !searchInput || !categorySelect) return;
+
+    categorySelect.addEventListener('change', function () {
+      searchInput.value = '';
+      form.submit();
+    });
+  })();
+</script>
 
 <div id="toast" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999; display: none;">
   <div class="toast align-items-center text-bg-success border-0 show">

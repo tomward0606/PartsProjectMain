@@ -90,15 +90,6 @@
 
 <div class="container mt-3 mb-5">
 
-  <div class="mb-3 d-flex align-items-center gap-2 small text-muted">
-    <span>Colour:</span>
-    <span class="colour-dot colour-green"></span><span>Green</span>
-    <span class="colour-dot colour-yellow"></span><span>Yellow</span>
-    <span class="colour-dot colour-red"></span><span>Red</span>
-    <span class="colour-dot colour-purple"></span><span>Purple</span>
-    <span class="ms-2">Unfound parts show as <strong>UNFOUND</strong> with no colour.</span>
-  </div>
-
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -196,46 +187,6 @@
           <button class="btn btn-dark w-100" {% if submitted %}disabled{% endif %}>Add</button>
         </div>
       </form>
-    </div>
-  </div>
-
-  <div class="card shadow-sm border-0 rounded-4 mt-4">
-    <div class="card-body">
-      <h5 class="mb-3">Current Stocktake Lines</h5>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>Part Code</th>
-              <th>Description</th>
-              <th>Colour</th>
-              <th class="text-end">Qty</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in stocktake_rows %}
-              <tr>
-                <td>
-                  {{ row.part_number }}
-                  {% if row.is_unfound %}<span class="badge bg-dark ms-1">UNFOUND</span>{% endif %}
-                </td>
-                <td>{{ row.description }}</td>
-                <td>
-                  {% if row.colour %}
-                    <span class="colour-pill colour-{{ row.colour|lower }}">{{ row.colour }}</span>
-                  {% else %}
-                    <span class="colour-pill colour-none">No colour</span>
-                  {% endif %}
-                </td>
-                <td class="text-end">{{ row.quantity }}</td>
-              </tr>
-            {% endfor %}
-            {% if stocktake_rows|length == 0 %}
-              <tr><td colspan="4" class="text-center text-muted py-3">No lines added yet.</td></tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
     </div>
   </div>
 </div>
