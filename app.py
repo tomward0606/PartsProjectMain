@@ -450,6 +450,18 @@ def normalize_engineer_email(user: str) -> str:
     return candidate
 
 
+def normalize_order_email(user: str) -> str:
+    """Basket/reorder helper: allow short prefix and append Servitech domain."""
+    candidate = (user or "").strip().lower()
+    if not candidate:
+        return ""
+    if "@" not in candidate:
+        candidate = f"{candidate}@servitech.co.uk"
+    if not candidate.endswith("@servitech.co.uk"):
+        return ""
+    return candidate
+
+
 with app.app_context():
     try:
         migrate_active_stocktake_run_to_april_2026()
@@ -637,7 +649,7 @@ def update_quantity(part_number):
 @app.route("/submit_basket", methods=["POST"])
 def submit_basket():
     engineer_name = request.form["email_user"].strip()
-    engineer_email = normalize_engineer_email(engineer_name)
+    engineer_email = normalize_order_email(engineer_name)
     source = request.form.get("source", "catalogue")
     basket = session.get("basket", {})
     engineer_role = session.get("parts_portal_role", "service")
@@ -715,7 +727,7 @@ def submit_basket():
 @app.route("/reorder", methods=["GET", "POST"])
 def reorder():
     email = (request.form.get("email_user") or "").strip() if request.method == "POST" else None
-    full_email = normalize_engineer_email(email) if email else None
+    full_email = normalize_order_email(email) if email else None
     orders = []
 
     if request.method == "POST" and email and not full_email:
