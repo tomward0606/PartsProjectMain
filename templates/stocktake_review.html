@@ -15,6 +15,7 @@
             <h3 class="mb-0">Review & Final Submit</h3>
             <div class="text-muted">
               Engineer: <strong>{{ engineer_email }}</strong> ·
+              Stocktake: <strong>{{ run_name }}</strong> ·
               {% if submitted %}
                 <strong>Stocktake date:</strong> {{ submitted_at }}
               {% else %}
@@ -45,19 +46,30 @@
               <tr>
                 <th>Part Number</th>
                 <th>Description</th>
+                <th>Colour</th>
                 <th style="width:120px;">Qty</th>
               </tr>
             </thead>
             <tbody>
-              {% for it in items %}
+              {% for it in stocktake_rows %}
                 <tr>
-                  <td><strong>{{ it.part_number }}</strong></td>
+                  <td>
+                    <strong>{{ it.part_number }}</strong>
+                    {% if it.is_unfound %}<span class="badge bg-dark ms-1">UNFOUND</span>{% endif %}
+                  </td>
                   <td class="text-muted">{{ it.description }}</td>
+                  <td>
+                    {% if it.colour %}
+                      <span class="colour-pill colour-{{ it.colour|lower }}">{{ it.colour }}</span>
+                    {% else %}
+                      <span class="colour-pill colour-none">No colour</span>
+                    {% endif %}
+                  </td>
                   <td>{{ it.quantity }}</td>
                 </tr>
               {% endfor %}
-              {% if items|length == 0 %}
-                <tr><td colspan="3" class="text-center text-muted py-4">No items to submit.</td></tr>
+              {% if stocktake_rows|length == 0 %}
+                <tr><td colspan="4" class="text-center text-muted py-4">No items to submit.</td></tr>
               {% endif %}
             </tbody>
           </table>
@@ -94,7 +106,7 @@
             </div>
 
             <div class="d-flex gap-2">
-              <button class="btn btn-dark btn-lg" {% if items|length == 0 %}disabled{% endif %}>
+              <button class="btn btn-dark btn-lg" {% if stocktake_rows|length == 0 %}disabled{% endif %}>
                 Final Submit
               </button>
               <a href="{{ url_for('stocktake_page', engineer_email=engineer_email) }}" class="btn btn-outline-secondary btn-lg">

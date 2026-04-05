@@ -51,8 +51,12 @@
         <p class="muted mb-4">Choose an area to continue.</p>
 
         <div class="d-grid gap-3">
-          <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">
-            Parts
+          <a href="{{ url_for('index', role='service') }}" class="btn btn-primary btn-lg">
+            Parts (Service Engineer)
+          </a>
+
+          <a href="{{ url_for('index', role='installs') }}" class="btn btn-outline-primary btn-lg">
+            Parts (Installs Engineer)
           </a>
 
           <a href="{{ url_for('reagents') }}" class="btn btn-secondary btn-lg">
@@ -68,6 +72,14 @@
 
         <hr class="my-4">
 
+        <div class="row g-2 mb-3">
+          <div class="col-12">
+            <a href="{{ url_for('parts_admin') }}" class="btn btn-outline-dark w-100">
+              Parts Editing / Adding
+            </a>
+          </div>
+        </div>
+
         <div class="row g-2">
           <div class="col-12 col-md-6">
             <a href="{{ url_for('reorder') }}" class="btn btn-outline-secondary w-100">
@@ -82,7 +94,7 @@
         </div>
 
         <div class="mt-4">
-          <span class="badge bg-secondary">VERSION 1.5</span>
+          <span class="badge bg-secondary">VERSION 2</span>
         </div>
 
       </div>

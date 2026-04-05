@@ -53,7 +53,7 @@
         </form>
       </div>
     </div>
-  </div>>
+  </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -101,7 +101,7 @@
                 {% if s.checked_at %}
                   <br>Checked: <strong>{{ s.checked_at }}</strong>{% if s.checked_by %} by <strong>{{ s.checked_by }}</strong>{% endif %}
                 {% endif %}
-                · Items: <strong>{{ s.total_qty }}</strong>
+                <br>Lines: <strong>{{ s.lines }}</strong> · Total Qty: <strong>{{ s.total_qty }}</strong>
               </div>
 
               <hr class="my-3">

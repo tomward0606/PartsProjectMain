@@ -54,7 +54,7 @@
       <div class="btn-group" role="group" aria-label="Stocktake view">
         <button type="button" class="btn btn-outline-primary active" id="viewAllBtn">All Parts</button>
         <button type="button" class="btn btn-outline-primary" id="viewMineBtn">
-          Stocktake
+          Stocktake <span class="badge text-bg-secondary ms-1" id="mineCountBadge">{{ mine_lines }}</span>
         </button>
       </div>
     </div>
@@ -90,6 +90,15 @@
 
 <div class="container mt-3 mb-5">
 
+  <div class="mb-3 d-flex align-items-center gap-2 small text-muted">
+    <span>Colour:</span>
+    <span class="colour-dot colour-green"></span><span>Green</span>
+    <span class="colour-dot colour-yellow"></span><span>Yellow</span>
+    <span class="colour-dot colour-red"></span><span>Red</span>
+    <span class="colour-dot colour-purple"></span><span>Purple</span>
+    <span class="ms-2">Unfound parts show as <strong>UNFOUND</strong> with no colour.</span>
+  </div>
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -117,7 +126,14 @@
 
               <div class="d-flex justify-content-between align-items-start gap-2">
                 <div>
-                  <div class="fw-semibold">{{ part.part_number }}</div>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="fw-semibold">{{ part.part_number }}</div>
+                    {% if part.colour %}
+                      <span class="colour-pill colour-{{ part.colour|lower }}">{{ part.colour }}</span>
+                    {% else %}
+                      <span class="colour-pill colour-none">No colour</span>
+                    {% endif %}
+                  </div>
                   <div class="text-muted small st-desc">{{ part.description }}</div>
                 </div>
 
@@ -159,6 +175,69 @@
   {% else %}
     <p class="text-muted">No parts found. Try a different search.</p>
   {% endif %}
+
+  <div class="card shadow-sm border-0 rounded-4 mt-4">
+    <div class="card-body">
+      <h5 class="mb-3">Part Unfound</h5>
+      <form method="POST" action="{{ url_for('stocktake_add_unfound', engineer_email=engineer_email) }}" class="row g-2 align-items-end">
+        <div class="col-12 col-md-3">
+          <label class="form-label">Code</label>
+          <input name="part_code" class="form-control" placeholder="Enter code" {% if submitted %}disabled{% endif %} required>
+        </div>
+        <div class="col-12 col-md-5">
+          <label class="form-label">Description</label>
+          <input name="description" class="form-control" placeholder="Enter description" {% if submitted %}disabled{% endif %} required>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label">Qty</label>
+          <input name="quantity" type="number" min="1" class="form-control" value="1" {% if submitted %}disabled{% endif %} required>
+        </div>
+        <div class="col-6 col-md-2">
+          <button class="btn btn-dark w-100" {% if submitted %}disabled{% endif %}>Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-0 rounded-4 mt-4">
+    <div class="card-body">
+      <h5 class="mb-3">Current Stocktake Lines</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Part Code</th>
+              <th>Description</th>
+              <th>Colour</th>
+              <th class="text-end">Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stocktake_rows %}
+              <tr>
+                <td>
+                  {{ row.part_number }}
+                  {% if row.is_unfound %}<span class="badge bg-dark ms-1">UNFOUND</span>{% endif %}
+                </td>
+                <td>{{ row.description }}</td>
+                <td>
+                  {% if row.colour %}
+                    <span class="colour-pill colour-{{ row.colour|lower }}">{{ row.colour }}</span>
+                  {% else %}
+                    <span class="colour-pill colour-none">No colour</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">{{ row.quantity }}</td>
+              </tr>
+            {% endfor %}
+            {% if stocktake_rows|length == 0 %}
+              <tr><td colspan="4" class="text-center text-muted py-3">No lines added yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Bottom toast -->
@@ -169,6 +248,7 @@
       <button type="button" class="btn-close btn-close-white me-2 m-auto" id="stToastClose"></button>
     </div>
   </div>
+</div>
 <script>
   // Simple remote count: keeps the "My Stocktake" badge in sync with the server.
   (function () {
@@ -184,7 +264,8 @@
         if (!data || data.ok !== true) return;
 
         // "items in the box" = total quantity across all selected parts
-        badge.textContent = String(data.total_qty ?? data.total_qty === 0 ? data.total_qty : (data.total_qty || 0));
+        const totalQty = (typeof data.total_qty === 'number') ? data.total_qty : 0;
+        badge.textContent = String(totalQty);
       } catch (e) {
         // silent
       }

@@ -23,6 +23,11 @@
         <div class="card mb-3">
           <div class="card-body">
             <h5>{{ part_number }}</h5>
+            {% if item.colour %}
+              <div class="mb-1"><span class="colour-pill colour-{{ item.colour|lower }}">{{ item.colour }}</span></div>
+            {% else %}
+              <div class="mb-1"><span class="colour-pill colour-none">No colour</span></div>
+            {% endif %}
             <h6 class="text-muted">{{ item.description }}</h6>
             <p><strong>Category:</strong> {{ item.category }}</p>
             {% if item.make %}

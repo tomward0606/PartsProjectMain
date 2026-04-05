@@ -265,3 +265,53 @@ header form {
 #viewAllBtn.active, #viewMineBtn.active {
   font-weight: 600;
 }
+
+
+/* Shared part colour styles */
+.colour-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.colour-green {
+  background: #e8f7ee;
+  color: #0f6b34;
+  border-color: #9fdbb8;
+}
+
+.colour-yellow {
+  background: #fff7dc;
+  color: #8a6a00;
+  border-color: #f1d06f;
+}
+
+.colour-red {
+  background: #fde8e8;
+  color: #a01822;
+  border-color: #f3a6ad;
+}
+
+.colour-purple {
+  background: #f3e8ff;
+  color: #5b21b6;
+  border-color: #ccb1f8;
+}
+
+.colour-none {
+  background: #f3f4f6;
+  color: #4b5563;
+  border-color: #d1d5db;
+}
+
+.colour-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+}

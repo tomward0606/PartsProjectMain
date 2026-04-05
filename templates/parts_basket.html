@@ -14,7 +14,7 @@
           <img src="{{ url_for('static', filename='homelogo.png') }}" alt="Logo" class="logo-center logo-button">
         </a>
         <h3 class="m-0">Parts Basket</h3>
-        <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to Catalogue</a>
+        <a href="{{ url_for('index', role=engineer_role) }}" class="btn btn-secondary">Back to Catalogue</a>
       </div>
     </div>
   </header>
@@ -25,6 +25,11 @@
         <div class="card mb-3">
           <div class="card-body">
             <h5>{{ part_number }}</h5>
+            {% if item.colour %}
+              <div class="mb-1"><span class="colour-pill colour-{{ item.colour|lower }}">{{ item.colour }}</span></div>
+            {% else %}
+              <div class="mb-1"><span class="colour-pill colour-none">No colour</span></div>
+            {% endif %}
             <h6 class="text-muted">{{ item.description }}</h6>
             <p><strong>Category:</strong> {{ item.category }}</p>
             {% if item.make %}

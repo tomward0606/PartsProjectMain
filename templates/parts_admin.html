@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parts Admin</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-light p-3">
+  <div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="m-0">Parts Editing / Adding</h3>
+      <a href="{{ url_for('landing') }}" class="btn btn-outline-secondary">Home</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} mb-3">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if not authed %}
+      <div class="card shadow-sm border-0 rounded-4" style="max-width: 520px;">
+        <div class="card-body">
+          <h5 class="mb-3">Admin Login</h5>
+          <form method="POST" action="{{ url_for('parts_admin') }}">
+            <input type="hidden" name="action" value="login">
+            <div class="mb-3">
+              <label class="form-label">Password</label>
+              <input type="password" name="password" class="form-control" required>
+            </div>
+            <button class="btn btn-dark">Sign in</button>
+          </form>
+          <div class="small text-muted mt-3">Set env var <code>PARTS_ADMIN_PASSWORD</code> to override the default password.</div>
+        </div>
+      </div>
+    {% else %}
+      <div class="card shadow-sm border-0 rounded-4 mb-3">
+        <div class="card-body">
+          <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <form method="GET" action="{{ url_for('parts_admin') }}" class="d-flex gap-2">
+              <input type="text" name="search" value="{{ search }}" placeholder="Search code/description/category" class="form-control" style="min-width: 280px;">
+              <button class="btn btn-primary">Search</button>
+            </form>
+            <form method="POST" action="{{ url_for('parts_admin') }}">
+              <input type="hidden" name="action" value="logout">
+              <button class="btn btn-outline-secondary">Sign out</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 rounded-4 mb-3">
+        <div class="card-body">
+          <h5 class="mb-3">Add New Part</h5>
+          <form method="POST" action="{{ url_for('parts_admin') }}" class="row g-2 align-items-end">
+            <input type="hidden" name="action" value="add">
+            <div class="col-12 col-md-2"><label class="form-label">Code</label><input name="part_number" class="form-control" required></div>
+            <div class="col-12 col-md-3"><label class="form-label">Description</label><input name="description" class="form-control" required></div>
+            <div class="col-12 col-md-2"><label class="form-label">Category</label><input name="category" class="form-control"></div>
+            <div class="col-12 col-md-1"><label class="form-label">Make</label><input name="make" class="form-control"></div>
+            <div class="col-12 col-md-2"><label class="form-label">Manufacturer</label><input name="manufacturer" class="form-control"></div>
+            <div class="col-12 col-md-2"><label class="form-label">Image</label><input name="image" class="form-control" placeholder="example.png"></div>
+            <div class="col-6 col-md-2"><label class="form-label">Colour</label>
+              <select name="colour" class="form-select">
+                <option value="">None</option>
+                {% for c in colours %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label d-block">Installs</label>
+              <input type="checkbox" class="form-check-input" name="installs">
+            </div>
+            <div class="col-12 col-md-2"><button class="btn btn-success w-100">Add Part</button></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body">
+          <h5 class="mb-3">Edit Existing Parts</h5>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Code</th>
+                  <th>Description</th>
+                  <th>Category</th>
+                  <th>Make</th>
+                  <th>Manufacturer</th>
+                  <th>Image</th>
+                  <th>Colour</th>
+                  <th>Installs</th>
+                  <th>Save</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for part in parts %}
+                  <tr>
+                    <form method="POST" action="{{ url_for('parts_admin') }}">
+                      <input type="hidden" name="action" value="update">
+                      <input type="hidden" name="original_part_number" value="{{ part.part_number }}">
+                      <td><input name="part_number" class="form-control form-control-sm" value="{{ part.part_number }}" required></td>
+                      <td><input name="description" class="form-control form-control-sm" value="{{ part.description }}" required></td>
+                      <td><input name="category" class="form-control form-control-sm" value="{{ part.category }}"></td>
+                      <td><input name="make" class="form-control form-control-sm" value="{{ part.make }}"></td>
+                      <td><input name="manufacturer" class="form-control form-control-sm" value="{{ part.manufacturer }}"></td>
+                      <td><input name="image" class="form-control form-control-sm" value="{{ part.image }}"></td>
+                      <td>
+                        <select name="colour" class="form-select form-select-sm">
+                          <option value="">None</option>
+                          {% for c in colours %}
+                            <option value="{{ c }}" {% if part.colour == c %}selected{% endif %}>{{ c }}</option>
+                          {% endfor %}
+                        </select>
+                      </td>
+                      <td class="text-center"><input type="checkbox" name="installs" class="form-check-input" {% if part.installs %}checked{% endif %}></td>
+                      <td><button class="btn btn-sm btn-primary">Save</button></td>
+                    </form>
+                  </tr>
+                {% endfor %}
+                {% if parts|length == 0 %}
+                  <tr><td colspan="9" class="text-center text-muted py-3">No parts found.</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>

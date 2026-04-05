@@ -12,7 +12,7 @@ from flask import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
-from typing import Set
+from typing import Set, Dict, List
 from sqlalchemy import desc, func, UniqueConstraint, cast
 from sqlalchemy.types import Integer
 from sqlalchemy.exc import IntegrityError
@@ -172,25 +172,149 @@ class StocktakeItem(db.Model):
     )
 
 
+class StocktakeUnfoundItem(db.Model):
+    __tablename__ = "stocktake_unfound_item"
+    id = db.Column(db.Integer, primary_key=True)
+    stocktake_id = db.Column(db.Integer, db.ForeignKey("stocktake.id"), nullable=False)
+    part_code = db.Column(db.String(64), nullable=False)
+    description = db.Column(db.String(256), nullable=False)
+    quantity = db.Column(db.Integer, default=1, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    stocktake = db.relationship("Stocktake", backref="unfound_items")
+
+
+with app.app_context():
+    try:
+        db.create_all()
+    except Exception as ex:
+        logger.warning(f"Database auto-create skipped: {ex}")
+
+
 
 # ── CSV catalogue load ────────────────────────────────────────────────────────
-parts_db = []
-with open("parts.csv", newline="", encoding="cp1252") as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        part_number = row["Product Code"].strip().replace("\u00a0", "").replace("\r", "").replace("\n", "")
-        clean_filename = part_number.replace("/", "") + ".png"
-        parts_db.append({
-            "part_number": part_number,
-            "description": row["Description"].strip(),
-            "category": row["Category"].strip(),
-            "make": row.get("Make", "").strip(),
-            "manufacturer": row.get("Manufacturer", "").strip(),
-            "image": clean_filename,
-        })
+PARTS_CSV_PATH = "parts.csv"
+ALLOWED_COLOURS = ["Green", "Yellow", "Red", "Purple"]
+DEFAULT_STOCKTAKE_RUN_NAME = "April 2026 Stocktake"
+
+
+def normalize_colour(colour: str) -> str:
+    raw = (colour or "").strip().lower()
+    if raw in {"green", "yellow", "amber", "red", "purple"}:
+        if raw == "amber":
+            return "Yellow"
+        return raw.capitalize()
+    return ""
+
+
+def normalize_installs(value: str) -> bool:
+    return (value or "").strip().lower() in {"yes", "y", "true", "1"}
+
+
+def part_to_csv_row(part: Dict[str, object]) -> Dict[str, str]:
+    return {
+        "Product Code": str(part.get("part_number", "") or "").strip(),
+        "Description": str(part.get("description", "") or "").strip(),
+        "Category": str(part.get("category", "") or "").strip(),
+        "Make": str(part.get("make", "") or "").strip(),
+        "Manufacturer": str(part.get("manufacturer", "") or "").strip(),
+        "image": str(part.get("image", "") or "").strip(),
+        "Colour": normalize_colour(str(part.get("colour", "") or "")),
+        "Installs": "Yes" if bool(part.get("installs")) else "",
+    }
+
+
+def load_parts_catalogue() -> List[Dict[str, object]]:
+    loaded_parts: List[Dict[str, object]] = []
+    with open(PARTS_CSV_PATH, newline="", encoding="cp1252") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            part_number = (row.get("Product Code") or "").strip().replace("\u00a0", "").replace("\r", "").replace("\n", "")
+            if not part_number:
+                continue
+
+            clean_filename = (row.get("image") or "").strip() or (part_number.replace("/", "") + ".png")
+
+            loaded_parts.append({
+                "part_number": part_number,
+                "description": (row.get("Description") or "").strip(),
+                "category": (row.get("Category") or "").strip(),
+                "make": (row.get("Make") or "").strip(),
+                "manufacturer": (row.get("Manufacturer") or "").strip(),
+                "image": clean_filename,
+                "colour": normalize_colour(row.get("Colour", "")),
+                "installs": normalize_installs(row.get("Installs", "")),
+            })
+    return loaded_parts
+
+
+def save_parts_catalogue(parts: List[Dict[str, object]]):
+    fieldnames = ["Product Code", "Description", "Category", "Make", "Manufacturer", "image", "Colour", "Installs"]
+    with open(PARTS_CSV_PATH, "w", newline="", encoding="cp1252") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for part in parts:
+            writer.writerow(part_to_csv_row(part))
+
+
+parts_db = load_parts_catalogue()
+
+
+def refresh_parts_catalogue():
+    global parts_db
+    parts_db = load_parts_catalogue()
+
 
 def get_categories(parts):
-    return sorted({p["category"] for p in parts})
+    return sorted({p["category"] for p in parts if p.get("category")})
+
+
+def get_part_by_number(part_number: str):
+    return next((p for p in parts_db if p["part_number"] == part_number), None)
+
+
+def get_part_colour(part_number: str) -> str:
+    part = get_part_by_number(part_number)
+    return (part or {}).get("colour", "") or ""
+
+
+def enrich_stocktake_items_with_colour(items):
+    enriched = []
+    for item in items:
+        enriched.append({
+            "part_number": item.part_number,
+            "description": item.description,
+            "quantity": int(item.quantity or 0),
+            "colour": get_part_colour(item.part_number),
+            "is_unfound": False,
+        })
+    return enriched
+
+
+def get_stocktake_rows_with_unfound(stocktake_id: int):
+    regular_items = (
+        StocktakeItem.query
+        .filter_by(stocktake_id=stocktake_id)
+        .order_by(StocktakeItem.part_number.asc())
+        .all()
+    )
+    rows = enrich_stocktake_items_with_colour(regular_items)
+
+    unfound_items = (
+        StocktakeUnfoundItem.query
+        .filter_by(stocktake_id=stocktake_id)
+        .order_by(StocktakeUnfoundItem.created_at.asc(), StocktakeUnfoundItem.id.asc())
+        .all()
+    )
+    for uf in unfound_items:
+        rows.append({
+            "part_number": uf.part_code,
+            "description": uf.description,
+            "quantity": int(uf.quantity or 0),
+            "colour": "",
+            "is_unfound": True,
+        })
+    return rows
 
 def stocktake_leader_password() -> str:
     # TODO: replace with env var later ------------------------------------------------------STOCKTAKE PASSOWRRD
@@ -266,19 +390,48 @@ def get_or_create_active_stocktake_run() -> StocktakeRun:
     run = StocktakeRun.query.filter_by(is_active=True).order_by(StocktakeRun.id.desc()).first()
     if run:
         return run
-    # Create a default active run if none exists
-    run_name = "January 2026"
-    run = StocktakeRun(name=run_name, is_active=True)
+
+    existing_target = (
+        StocktakeRun.query
+        .filter_by(name=DEFAULT_STOCKTAKE_RUN_NAME)
+        .order_by(StocktakeRun.id.desc())
+        .first()
+    )
+    if existing_target:
+        existing_target.is_active = True
+        db.session.commit()
+        return existing_target
+
+    run = StocktakeRun(name=DEFAULT_STOCKTAKE_RUN_NAME, is_active=True)
     db.session.add(run)
     db.session.commit()
     return run
 
 
+def migrate_active_stocktake_run_to_april_2026():
+    current_active = StocktakeRun.query.filter_by(is_active=True).order_by(StocktakeRun.id.desc()).first()
+    april_run = StocktakeRun.query.filter_by(name=DEFAULT_STOCKTAKE_RUN_NAME).order_by(StocktakeRun.id.desc()).first()
+
+    if april_run:
+        StocktakeRun.query.update({"is_active": False})
+        april_run.is_active = True
+        db.session.commit()
+        return
+
+    if current_active and current_active.name != DEFAULT_STOCKTAKE_RUN_NAME:
+        current_active.is_active = False
+
+    new_run = StocktakeRun(name=DEFAULT_STOCKTAKE_RUN_NAME, is_active=True)
+    db.session.add(new_run)
+    db.session.commit()
+
+
 def stocktake_counts(stocktake_id: int):
     """Return (lines_count, total_qty) for a stocktake."""
     items = StocktakeItem.query.filter_by(stocktake_id=stocktake_id).all()
-    lines = len(items)
-    total_qty = sum(int(getattr(i, "quantity", 0) or 0) for i in items)
+    unfound_items = StocktakeUnfoundItem.query.filter_by(stocktake_id=stocktake_id).all()
+    lines = len(items) + len(unfound_items)
+    total_qty = sum(int(getattr(i, "quantity", 0) or 0) for i in items) + sum(int(getattr(i, "quantity", 0) or 0) for i in unfound_items)
     return lines, total_qty
 
 def stocktake_leader_email() -> str:
@@ -286,8 +439,21 @@ def stocktake_leader_email() -> str:
     return (os.environ.get("STOCKTAKE_LEADER_EMAIL") or "servitech.stock@gmail.com").strip()
 
 def normalize_engineer_email(user: str) -> str:
-    engineer_name = (user or "").strip().lower()
-    return f"{engineer_name}@servitech.co.uk" if engineer_name else ""
+    candidate = (user or "").strip().lower()
+    if not candidate:
+        return ""
+    if "@" not in candidate:
+        candidate = f"{candidate}@servitech.co.uk"
+    if not candidate.endswith("@servitech.co.uk"):
+        return ""
+    return candidate
+
+
+with app.app_context():
+    try:
+        migrate_active_stocktake_run_to_april_2026()
+    except Exception as ex:
+        logger.warning(f"Stocktake run migration skipped: {ex}")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -324,8 +490,16 @@ def test_email():
 # Catalogue (Parts)
 @app.route("/catalogue")
 def index():
+    engineer_role = (request.args.get("role") or "service").strip().lower()
+    if engineer_role not in {"service", "installs"}:
+        engineer_role = "service"
+    session["parts_portal_role"] = engineer_role
+
     # 1) Base list: non-reagents from parts_db
     base = [p for p in parts_db if "reagent" not in (p.get("category", "").lower())]
+
+    if engineer_role == "installs":
+        base = [p for p in base if bool(p.get("installs"))]
 
     # 2) Exclude hidden product codes
     hidden = get_hidden_part_numbers()  # set[str], uppercased
@@ -354,6 +528,7 @@ def index():
         categories=get_categories(parts),  # categories built from visible items
         selected_category=category,
         search=search,
+        engineer_role=engineer_role,
     )
 
 
@@ -386,7 +561,11 @@ def reagents():
 # Basket views
 @app.route("/parts_basket")
 def view_parts_basket():
-    return render_template("parts_basket.html", basket=session.get("basket", {}))
+    return render_template(
+        "parts_basket.html",
+        basket=session.get("basket", {}),
+        engineer_role=session.get("parts_portal_role", "service")
+    )
 
 @app.route("/reagents_basket")
 def view_reagents_basket():
@@ -395,9 +574,15 @@ def view_reagents_basket():
 # Basket actions
 @app.route("/add_to_basket/<path:part_number>")
 def add_to_basket(part_number):
-    part = next((p for p in parts_db if p["part_number"] == part_number), None)
+    part = get_part_by_number(part_number)
     if not part:
         return redirect(url_for("index"))
+
+    role = session.get("parts_portal_role", "service")
+    is_reagent = "reagent" in (part.get("category", "").lower())
+    if role == "installs" and not is_reagent and not bool(part.get("installs")):
+        flash("This part is not available in the installs parts catalogue.", "warning")
+        return redirect(request.referrer or url_for("index", role=role))
 
     basket = session.get("basket", {})
     if part_number in basket:
@@ -409,6 +594,7 @@ def add_to_basket(part_number):
             "make": part["make"],
             "manufacturer": part["manufacturer"],
             "image": part["image"],
+            "colour": part.get("colour", ""),
             "quantity": 1,
         }
     session["basket"] = basket
@@ -450,9 +636,10 @@ def update_quantity(part_number):
 @app.route("/submit_basket", methods=["POST"])
 def submit_basket():
     engineer_name = request.form["email_user"].strip()
-    engineer_email = f"{engineer_name}@servitech.co.uk".lower()
+    engineer_email = normalize_engineer_email(engineer_name)
     source = request.form.get("source", "catalogue")
     basket = session.get("basket", {})
+    engineer_role = session.get("parts_portal_role", "service")
 
     if not basket or not engineer_email:
         flash("Your basket is empty or email missing", "warning")
@@ -460,7 +647,12 @@ def submit_basket():
 
     # email body
     lines = [
-        f"• Part Number: {pnum}\n  Description: {item['description']}\n  Quantity: {item['quantity']}"
+        (
+            f"• Part Number: {pnum}\n"
+            f"  Description: {item['description']}\n"
+            f"  Quantity: {item['quantity']}\n"
+            f"  Colour: {(item.get('colour') or 'Not set')}"
+        )
         for pnum, item in basket.items()
     ]
     comments = request.form.get("comments", "").strip()
@@ -469,6 +661,7 @@ def submit_basket():
 
     body_text = (
         f"Engineer: {engineer_email}\n"
+        f"Engineer Type: {engineer_role.capitalize()}\n"
         f"Request Date: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
         "Requested Items:\n\n" + "\n\n".join(lines) + "\n"
     )
@@ -593,7 +786,7 @@ def reorder_to_basket():
         else:
             basket[pnum] = {
                 "description": item.description, "quantity": item.quantity,
-                "category": "Reagents", "make": "", "manufacturer": "", "image": ""
+                "category": "Reagents", "make": "", "manufacturer": "", "image": "", "colour": get_part_colour(pnum)
             }
     session["basket"] = basket
     flash("Added past order to basket!", "success")
@@ -608,9 +801,24 @@ def stocktake_start():
 
     engineer_user = request.form.get("email_user", "")
     engineer_email = normalize_engineer_email(engineer_user)
-    if not engineer_email or "@servitech.co.uk" not in engineer_email:
-        flash("Please enter your email username (e.g. tom).", "warning")
+    if not engineer_email:
+        flash("Use your full Servitech email address (example: tom@servitech.co.uk).", "warning")
         return redirect(url_for("stocktake_start"))
+
+    run = get_or_create_active_stocktake_run()
+    existing_stocktake = (
+        Stocktake.query
+        .filter_by(run_id=run.id, engineer_email=engineer_email)
+        .order_by(Stocktake.created_at.desc())
+        .first()
+    )
+
+    if existing_stocktake and existing_stocktake.status in {"submitted", "checked"}:
+        flash(
+            f"You already submitted {run.name}. Your latest submission is locked.",
+            "warning"
+        )
+        return redirect(url_for("stocktake_review", engineer_email=engineer_email))
 
     return redirect(url_for("stocktake_page", engineer_email=engineer_email))
 
@@ -630,7 +838,7 @@ def stocktake_page(engineer_email):
             db.session.rollback()
             st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
 
-    submitted = (st.status == "submitted")
+    submitted = st.status in {"submitted", "checked"}
     submitted_at = st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else None
 
     # Catalogue filtering mirrors /catalogue but excludes reagents (same as your parts catalogue base) :contentReference[oaicite:5]{index=5}
@@ -660,6 +868,7 @@ def stocktake_page(engineer_email):
         .order_by(StocktakeItem.part_number.asc())
         .all()
     )
+    stocktake_rows = get_stocktake_rows_with_unfound(st.id)
 
     # remember last engineer on this device/browser
     session["last_stocktake_email"] = engineer_email.lower()
@@ -681,10 +890,45 @@ def stocktake_page(engineer_email):
         selected_category=category,
         search=search,
         items=items,
+        stocktake_rows=stocktake_rows,
         item_qty_map=item_qty_map,
         mine_lines=mine_lines,
         mine_total_qty=mine_total_qty,
     )
+
+
+@app.route("/stocktake/<engineer_email>/add-unfound", methods=["POST"])
+def stocktake_add_unfound(engineer_email):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        flash("Stocktake not found. Start again.", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    if st.status in {"submitted", "checked"}:
+        flash("This stocktake is already submitted and locked.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    part_code = (request.form.get("part_code") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    try:
+        quantity = int(request.form.get("quantity", 0))
+    except ValueError:
+        quantity = 0
+
+    if not part_code or not description or quantity <= 0:
+        flash("For Part unfound, enter code, description, and a quantity above zero.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    db.session.add(StocktakeUnfoundItem(
+        stocktake_id=st.id,
+        part_code=part_code,
+        description=description,
+        quantity=quantity,
+    ))
+    db.session.commit()
+    flash("Part unfound line added.", "success")
+    return redirect(url_for("stocktake_page", engineer_email=engineer_email, view="mine"))
 
 
 @app.route("/stocktake/<engineer_email>/add/<path:part_number>")
@@ -695,7 +939,7 @@ def stocktake_add_item(engineer_email, part_number):
         flash("Stocktake not found. Start again.", "warning")
         return redirect(url_for("stocktake_start"))
 
-    if st.status == "submitted":
+    if st.status in {"submitted", "checked"}:
         flash("This stocktake is already submitted and locked.", "warning")
         return redirect(url_for("stocktake_page", engineer_email=engineer_email))
 
@@ -730,7 +974,7 @@ def stocktake_update_item(engineer_email, part_number):
         flash("Stocktake not found.", "warning")
         return redirect(url_for("stocktake_start"))
 
-    if st.status == "submitted":
+    if st.status in {"submitted", "checked"}:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"ok": False, "error": "This stocktake is locked."}), 403
         flash("This stocktake is already submitted and locked.", "warning")
@@ -778,7 +1022,7 @@ def stocktake_remove_item(engineer_email, part_number):
         flash("Stocktake not found.", "warning")
         return redirect(url_for("stocktake_start"))
 
-    if st.status == "submitted":
+    if st.status in {"submitted", "checked"}:
         flash("This stocktake is already submitted and locked.", "warning")
         return redirect(url_for("stocktake_page", engineer_email=engineer_email))
 
@@ -798,7 +1042,7 @@ def stocktake_set_item_qty(engineer_email, part_number):
     if not st:
         return jsonify({"ok": False, "error": "Stocktake not found."}), 404
 
-    if st.status == "submitted":
+    if st.status in {"submitted", "checked"}:
         return jsonify({"ok": False, "error": "This stocktake is submitted and locked."}), 400
 
     try:
@@ -863,17 +1107,17 @@ def stocktake_review(engineer_email):
         flash("Stocktake not found.", "warning")
         return redirect(url_for("stocktake_start"))
 
-    items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
-    total_qty = sum([i.quantity for i in items])
+    stocktake_rows = get_stocktake_rows_with_unfound(st.id)
+    total_qty = sum([int(i.get("quantity") or 0) for i in stocktake_rows])
 
-    submitted = (st.status == "submitted")
+    submitted = st.status in {"submitted", "checked"}
     submitted_at = st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else None
 
     return render_template(
         "stocktake_review.html",
         engineer_email=engineer_email.lower(),
         run_name=run.name,
-        items=items,
+        stocktake_rows=stocktake_rows,
         total_qty=total_qty,
         submitted=submitted,
         submitted_at=submitted_at
@@ -888,7 +1132,7 @@ def stocktake_submit(engineer_email):
         flash("Stocktake not found.", "warning")
         return redirect(url_for("stocktake_start"))
 
-    if st.status == "submitted":
+    if st.status in {"submitted", "checked"}:
         flash("Already submitted.", "success")
         return redirect(url_for("stocktake_review", engineer_email=engineer_email))
 
@@ -898,8 +1142,8 @@ def stocktake_submit(engineer_email):
         flash("To submit, tick the checkbox and type SUBMIT.", "warning")
         return redirect(url_for("stocktake_review", engineer_email=engineer_email))
 
-    items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
-    if not items:
+    stocktake_rows = get_stocktake_rows_with_unfound(st.id)
+    if not stocktake_rows:
         flash("You can’t submit an empty stocktake.", "warning")
         return redirect(url_for("stocktake_review", engineer_email=engineer_email))
 
@@ -912,10 +1156,18 @@ def stocktake_submit(engineer_email):
     db.session.commit()
 
     # Build email body
-    lines = [
-        f"• Part Number: {it.part_number}\n  Description: {it.description}\n  Quantity: {it.quantity}"
-        for it in items
-    ]
+    lines = []
+    for row in stocktake_rows:
+        line = (
+            f"• Part Number: {row.get('part_number','')}\n"
+            f"  Description: {row.get('description','')}\n"
+            f"  Quantity: {row.get('quantity', 0)}"
+        )
+        if row.get("is_unfound"):
+            line += "\n  Type: Part unfound"
+        else:
+            line += f"\n  Colour: {row.get('colour') or 'Not set'}"
+        lines.append(line)
 
     body_text = (
         f"Engineer: {engineer_email.lower()}\n"
@@ -988,7 +1240,8 @@ def stocktake_parts_search():
 
         results.append({
             "part_number": pn,
-            "description": p.get("description", "") or ""
+            "description": p.get("description", "") or "",
+            "colour": p.get("colour", "") or "",
         })
 
         # Safety limit so you don't return thousands every keystroke
@@ -996,6 +1249,127 @@ def stocktake_parts_search():
             break
 
     return jsonify({"ok": True, "parts": results})
+
+
+def parts_admin_password() -> str:
+    return (os.environ.get("PARTS_ADMIN_PASSWORD") or "dan123").strip()
+
+
+def require_parts_admin():
+    if session.get("parts_admin_authed"):
+        return None
+    return redirect(url_for("parts_admin"))
+
+
+@app.route("/parts-admin", methods=["GET", "POST"])
+def parts_admin():
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip().lower()
+
+        if action == "login":
+            password = (request.form.get("password") or "").strip()
+            if password != parts_admin_password():
+                flash("Incorrect parts admin password.", "warning")
+                return redirect(url_for("parts_admin"))
+            session["parts_admin_authed"] = True
+            flash("Parts admin access granted.", "success")
+            return redirect(url_for("parts_admin"))
+
+        guard = require_parts_admin()
+        if guard:
+            return guard
+
+        if action == "logout":
+            session.pop("parts_admin_authed", None)
+            flash("Signed out.", "success")
+            return redirect(url_for("parts_admin"))
+
+        working = [dict(p) for p in parts_db]
+
+        if action == "update":
+            original_part_number = (request.form.get("original_part_number") or "").strip()
+            updated_part_number = (request.form.get("part_number") or "").strip()
+            if not original_part_number or not updated_part_number:
+                flash("Part code is required.", "warning")
+                return redirect(url_for("parts_admin"))
+
+            if original_part_number != updated_part_number:
+                duplicate = next((p for p in working if p["part_number"] == updated_part_number), None)
+                if duplicate:
+                    flash("Cannot change part code because the new code already exists.", "warning")
+                    return redirect(url_for("parts_admin"))
+
+            target = next((p for p in working if p["part_number"] == original_part_number), None)
+            if not target:
+                flash("Part to update was not found.", "warning")
+                return redirect(url_for("parts_admin"))
+
+            target["part_number"] = updated_part_number
+            target["description"] = (request.form.get("description") or "").strip()
+            target["category"] = (request.form.get("category") or "").strip()
+            target["make"] = (request.form.get("make") or "").strip()
+            target["manufacturer"] = (request.form.get("manufacturer") or "").strip()
+            target["image"] = (request.form.get("image") or "").strip()
+            target["colour"] = normalize_colour(request.form.get("colour", ""))
+            target["installs"] = request.form.get("installs") == "on"
+
+            save_parts_catalogue(working)
+            refresh_parts_catalogue()
+            flash(f"Updated {updated_part_number}.", "success")
+            return redirect(url_for("parts_admin"))
+
+        if action == "add":
+            new_part_number = (request.form.get("part_number") or "").strip()
+            if not new_part_number:
+                flash("Part code is required for new part.", "warning")
+                return redirect(url_for("parts_admin"))
+
+            duplicate = next((p for p in working if p["part_number"] == new_part_number), None)
+            if duplicate:
+                flash("That part code already exists.", "warning")
+                return redirect(url_for("parts_admin"))
+
+            working.append({
+                "part_number": new_part_number,
+                "description": (request.form.get("description") or "").strip(),
+                "category": (request.form.get("category") or "").strip(),
+                "make": (request.form.get("make") or "").strip(),
+                "manufacturer": (request.form.get("manufacturer") or "").strip(),
+                "image": (request.form.get("image") or "").strip(),
+                "colour": normalize_colour(request.form.get("colour", "")),
+                "installs": request.form.get("installs") == "on",
+            })
+
+            save_parts_catalogue(working)
+            refresh_parts_catalogue()
+            flash(f"Added {new_part_number}.", "success")
+            return redirect(url_for("parts_admin"))
+
+    if not session.get("parts_admin_authed"):
+        return render_template("parts_admin.html", authed=False)
+
+    search = (request.args.get("search") or "").strip().lower()
+    if search:
+        visible_parts = [
+            p for p in parts_db
+            if (
+                search in (p.get("part_number", "").lower())
+                or search in (p.get("description", "").lower())
+                or search in (p.get("category", "").lower())
+            )
+        ]
+    else:
+        visible_parts = list(parts_db)
+
+    visible_parts.sort(key=lambda x: (x.get("part_number") or "").lower())
+
+    return render_template(
+        "parts_admin.html",
+        authed=True,
+        parts=visible_parts,
+        search=search,
+        colours=ALLOWED_COLOURS,
+    )
 
 
 @app.route("/stocktake-leader", methods=["GET", "POST"])
@@ -1050,6 +1424,7 @@ def stocktake_leader_dashboard():
     submissions = []
     for st in all_stocktakes:
         items = StocktakeItem.query.filter_by(stocktake_id=st.id).all()
+        unfound_items = StocktakeUnfoundItem.query.filter_by(stocktake_id=st.id).all()
 
         # IMPORTANT: use submitted_at (not submitted_at_str) so templates can detect it
         submitted_at = (
@@ -1061,7 +1436,8 @@ def stocktake_leader_dashboard():
             "id": st.id,
             "engineer_email": st.engineer_email,
             "submitted_at": submitted_at,     # <-- template-friendly
-            "lines": len(items),
+            "lines": len(items) + len(unfound_items),
+            "total_qty": sum(int(i.quantity or 0) for i in items) + sum(int(i.quantity or 0) for i in unfound_items),
             "status": st.status,
             "checked_by": st.checked_by,
             "checked_at": st.checked_at.strftime("%Y-%m-%d %H:%M UTC") if st.checked_at else None,
@@ -1147,6 +1523,7 @@ def stocktake_leader_edit_engineer(stocktake_id):
         filtered = [p for p in parts if not category or p.get("category") == category]
 
     items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
+    stocktake_rows = get_stocktake_rows_with_unfound(st.id)
 
     item_qty_map = {it.part_number: int(it.quantity or 0) for it in items}
 
@@ -1160,6 +1537,7 @@ def stocktake_leader_edit_engineer(stocktake_id):
         checked_by=st.checked_by,
         checked_at=st.checked_at.strftime("%Y-%m-%d %H:%M UTC") if st.checked_at else None,
         items=items,
+        stocktake_rows=stocktake_rows,
         item_qty_map=item_qty_map,
         parts=filtered,
         categories=get_categories(parts),
@@ -1326,6 +1704,7 @@ def stocktake_leader_delete(stocktake_id):
     
     # Delete all items for that stocktake (cascade handles this, but be explicit)
     StocktakeItem.query.filter_by(stocktake_id=st.id).delete(synchronize_session=False)
+    StocktakeUnfoundItem.query.filter_by(stocktake_id=st.id).delete(synchronize_session=False)
     
     # Delete the stocktake itself
     db.session.delete(st)
@@ -1414,6 +1793,29 @@ def build_master_totals_for_run(run_id: int):
             "description": desc_map.get(pn_clean, ""),
             "total_qty": int(total_qty or 0),
         })
+
+    unfound_rows = (
+        db.session.query(
+            StocktakeUnfoundItem.part_code.label("part_number"),
+            StocktakeUnfoundItem.description.label("description"),
+            func.sum(cast(StocktakeUnfoundItem.quantity, Integer)).label("total_qty")
+        )
+        .join(Stocktake, StocktakeUnfoundItem.stocktake_id == Stocktake.id)
+        .filter(
+            Stocktake.run_id == run_id,
+            Stocktake.status == "submitted",
+        )
+        .group_by(StocktakeUnfoundItem.part_code, StocktakeUnfoundItem.description)
+        .all()
+    )
+    for uf in unfound_rows:
+        out.append({
+            "part_number": uf.part_number,
+            "description": f"[UNFOUND] {uf.description}",
+            "total_qty": int(uf.total_qty or 0),
+        })
+
+    out.sort(key=lambda x: (str(x.get("part_number") or "").lower(), str(x.get("description") or "").lower()))
     return out
 
 
@@ -1487,6 +1889,15 @@ def stocktake_leader_export_all():
             qty = int(it.quantity or 0)
             w.writerow([engineer, submitted_at_str, pn, desc_map.get(pn, ""), qty, run.name])
 
+        unfound_items = (
+            StocktakeUnfoundItem.query
+            .filter_by(stocktake_id=sub.id)
+            .order_by(StocktakeUnfoundItem.part_code.asc(), StocktakeUnfoundItem.id.asc())
+            .all()
+        )
+        for uf in unfound_items:
+            w.writerow([engineer, submitted_at_str, uf.part_code, f"[UNFOUND] {uf.description}", int(uf.quantity or 0), run.name])
+
     filename = f"stocktake_all_{run.name.replace(' ', '_')}.csv"
     return Response(
         buf.getvalue(),
@@ -1505,6 +1916,14 @@ def stocktake_leader_export_engineer(stocktake_id):
     items = StocktakeItem.query.filter_by(stocktake_id=st.id).order_by(StocktakeItem.part_number.asc()).all()
 
     rows = [(st.engineer_email, it.part_number, it.description, it.quantity) for it in items]
+
+    unfound_items = (
+        StocktakeUnfoundItem.query
+        .filter_by(stocktake_id=st.id)
+        .order_by(StocktakeUnfoundItem.part_code.asc(), StocktakeUnfoundItem.id.asc())
+        .all()
+    )
+    rows.extend([(st.engineer_email, uf.part_code, f"[UNFOUND] {uf.description}", uf.quantity) for uf in unfound_items])
     return csv_response(
         f"stocktake_{st.engineer_email}.csv",
         rows,
@@ -1596,6 +2015,8 @@ def my_orders():
     )
     last_dispatch_for_part = {row.part_number: row.last_date for row in last_dispatch_results}
 
+    colour_for_part = {p.get("part_number", ""): p.get("colour", "") for p in parts_db}
+
     # Render
     return render_template(
         "my_orders.html",
@@ -1605,6 +2026,7 @@ def my_orders():
         recent_dispatches=recent_dispatches,
         older_dispatches=older_dispatches,
         last_dispatch_for_part=last_dispatch_for_part,
+        colour_for_part=colour_for_part,
     )
 
 # ──────────────────────────────────────────────────────────────────────────────
