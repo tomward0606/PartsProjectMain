@@ -15,6 +15,7 @@
       </div>
       <div class="d-flex gap-2">
         <a class="btn btn-outline-secondary" href="{{ url_for('stocktake_leader_dashboard') }}">Back</a>
+        <a class="btn btn-outline-primary" href="{{ url_for('stocktake_leader_edit_engineer', stocktake_id=stocktake_id) }}">Edit Quantities</a>
         <a class="btn btn-outline-dark" href="{{ url_for('stocktake_leader_export_engineer', stocktake_id=stocktake_id) }}">Export CSV</a>
       </div>
     </div>
@@ -25,21 +26,32 @@
           <table class="table table-sm align-middle mb-0">
             <thead class="table-light">
               <tr>
-                <th style="width: 180px;">Part Number</th>
+                <th style="width: 180px;">Part Code</th>
                 <th>Description</th>
+                <th style="width: 140px;">Colour</th>
                 <th style="width: 120px;" class="text-end">Qty</th>
               </tr>
             </thead>
             <tbody>
-              {% for it in items %}
+              {% for it in stocktake_rows %}
                 <tr>
-                  <td><strong>{{ it.part_number }}</strong></td>
+                  <td>
+                    <strong>{{ it.part_number }}</strong>
+                    {% if it.is_unfound %}<span class="badge bg-dark ms-1">UNFOUND</span>{% endif %}
+                  </td>
                   <td class="text-muted">{{ it.description }}</td>
+                  <td>
+                    {% if it.colour %}
+                      <span class="colour-pill colour-{{ it.colour|lower }}">{{ it.colour }}</span>
+                    {% else %}
+                      <span class="colour-pill colour-none">No colour</span>
+                    {% endif %}
+                  </td>
                   <td class="text-end"><strong>{{ it.quantity }}</strong></td>
                 </tr>
               {% endfor %}
-              {% if items|length == 0 %}
-                <tr><td colspan="3" class="text-center text-muted py-4">No items.</td></tr>
+              {% if stocktake_rows|length == 0 %}
+                <tr><td colspan="4" class="text-center text-muted py-4">No items.</td></tr>
               {% endif %}
             </tbody>
           </table>

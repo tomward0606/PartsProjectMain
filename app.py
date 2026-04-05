@@ -442,8 +442,9 @@ def normalize_engineer_email(user: str) -> str:
     candidate = (user or "").strip().lower()
     if not candidate:
         return ""
+    # Require full email so we avoid silently auto-appending domains.
     if "@" not in candidate:
-        candidate = f"{candidate}@servitech.co.uk"
+        return ""
     if not candidate.endswith("@servitech.co.uk"):
         return ""
     return candidate
@@ -713,9 +714,12 @@ def submit_basket():
 # Reorder (reagents)
 @app.route("/reorder", methods=["GET", "POST"])
 def reorder():
-    email = request.form.get("email_user") if request.method == "POST" else None
-    full_email = f"{email}@servitech.co.uk" if email else None
+    email = (request.form.get("email_user") or "").strip() if request.method == "POST" else None
+    full_email = normalize_engineer_email(email) if email else None
     orders = []
+
+    if request.method == "POST" and email and not full_email:
+        flash("Use your full Servitech email address (example: tom@servitech.co.uk).", "warning")
 
     if full_email:
         results = (
@@ -808,8 +812,12 @@ def stocktake_start():
     run = get_or_create_active_stocktake_run()
     existing_stocktake = (
         Stocktake.query
-        .filter_by(run_id=run.id, engineer_email=engineer_email)
-        .order_by(Stocktake.created_at.desc())
+        .join(StocktakeRun, Stocktake.run_id == StocktakeRun.id)
+        .filter(
+            Stocktake.engineer_email == engineer_email,
+            StocktakeRun.name == run.name,
+        )
+        .order_by(Stocktake.created_at.desc(), Stocktake.id.desc())
         .first()
     )
 
@@ -1479,12 +1487,27 @@ def stocktake_leader_update_run_name():
 
 @app.route("/stocktake-leader/engineer/<int:stocktake_id>")
 def stocktake_leader_view_engineer(stocktake_id):
-    # We use the edit page as the 'view' page now, because admins need
-    # to adjust quantities / add / delete items.
     guard = require_stocktake_leader()
     if guard:
         return guard
-    return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.get_or_404(stocktake_id)
+
+    if st.run_id != run.id:
+        flash("That stocktake is not part of the active run.", "warning")
+        return redirect(url_for("stocktake_leader_dashboard"))
+
+    stocktake_rows = get_stocktake_rows_with_unfound(st.id)
+
+    return render_template(
+        "stocktake_leader_engineer.html",
+        stocktake_id=st.id,
+        engineer_email=st.engineer_email,
+        run_name=run.name,
+        submitted_at=st.submitted_at.strftime("%Y-%m-%d %H:%M UTC") if st.submitted_at else "Not submitted yet",
+        stocktake_rows=stocktake_rows,
+    )
 
 
 @app.route("/stocktake-leader/engineer/<int:stocktake_id>/edit")
