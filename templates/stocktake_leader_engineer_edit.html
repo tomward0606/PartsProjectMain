@@ -169,11 +169,13 @@
               <tr>
                 <td>
                   {{ row.part_number }}
-                  {% if row.is_unfound %}<span class="badge bg-dark ms-1">UNFOUND</span>{% endif %}
+                  {% if row.is_unfound %}<span class="badge bg-dark ms-1">ADDED MANUALLY</span>{% endif %}
                 </td>
                 <td>{{ row.description }}</td>
                 <td>
-                  {% if row.colour %}
+                  {% if row.is_unfound %}
+                    <span class="text-muted">Added manually</span>
+                  {% elif row.colour %}
                     <span class="colour-pill colour-{{ row.colour|lower }}">{{ row.colour }}</span>
                   {% else %}
                     <span class="colour-pill colour-none">No colour</span>

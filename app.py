@@ -937,7 +937,7 @@ def stocktake_add_unfound(engineer_email):
         quantity = 0
 
     if not part_code or not description or quantity <= 0:
-        flash("For Part unfound, enter code, description, and a quantity above zero.", "warning")
+        flash("For manually added parts, enter a code, description, and a quantity above zero.", "warning")
         return redirect(url_for("stocktake_page", engineer_email=engineer_email))
 
     db.session.add(StocktakeUnfoundItem(
@@ -947,7 +947,7 @@ def stocktake_add_unfound(engineer_email):
         quantity=quantity,
     ))
     db.session.commit()
-    flash("Part unfound line added.", "success")
+    flash("Part added to stocktake.", "success")
     return redirect(url_for("stocktake_page", engineer_email=engineer_email, view="mine"))
 
 
@@ -1184,7 +1184,7 @@ def stocktake_submit(engineer_email):
             f"  Quantity: {row.get('quantity', 0)}"
         )
         if row.get("is_unfound"):
-            line += "\n  Type: Part unfound"
+            line += "\n  Type: Added manually"
         else:
             line += f"\n  Colour: {row.get('colour') or 'Not set'}"
         lines.append(line)

@@ -169,11 +169,15 @@
 
   <div class="card shadow-sm border-0 rounded-4 mt-4">
     <div class="card-body">
-      <h5 class="mb-3">Part Unfound</h5>
+      <h5 class="mb-1">Add Part Not Listed</h5>
+      <p class="text-muted small mb-3">
+        Use this if you need to record a part that is on the van but not shown in the stocktake list.
+        It will appear in your stocktake summary below.
+      </p>
       <form method="POST" action="{{ url_for('stocktake_add_unfound', engineer_email=engineer_email) }}" class="row g-2 align-items-end">
         <div class="col-12 col-md-3">
-          <label class="form-label">Code</label>
-          <input name="part_code" class="form-control" placeholder="Enter code" {% if submitted %}disabled{% endif %} required>
+          <label class="form-label">Part code</label>
+          <input name="part_code" class="form-control" placeholder="Enter part code" {% if submitted %}disabled{% endif %} required>
         </div>
         <div class="col-12 col-md-5">
           <label class="form-label">Description</label>
@@ -184,9 +188,61 @@
           <input name="quantity" type="number" min="1" class="form-control" value="1" {% if submitted %}disabled{% endif %} required>
         </div>
         <div class="col-6 col-md-2">
-          <button class="btn btn-dark w-100" {% if submitted %}disabled{% endif %}>Add</button>
+          <button class="btn btn-dark w-100" {% if submitted %}disabled{% endif %}>Add to Stocktake</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-0 rounded-4 mt-4">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div>
+          <h5 class="mb-1">Current Stocktake</h5>
+          <div class="text-muted small">Includes parts from the list and anything added manually.</div>
+        </div>
+        <div class="text-muted small text-md-end">
+          <div>Lines: <strong>{{ stocktake_rows|length }}</strong></div>
+          <div>Total qty: <strong>{{ mine_total_qty }}</strong></div>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Part Code</th>
+              <th>Description</th>
+              <th>Colour</th>
+              <th class="text-end">Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stocktake_rows %}
+              <tr>
+                <td>
+                  <strong>{{ row.part_number }}</strong>
+                  {% if row.is_unfound %}<span class="badge bg-dark ms-1">ADDED MANUALLY</span>{% endif %}
+                </td>
+                <td class="text-muted">{{ row.description }}</td>
+                <td>
+                  {% if row.is_unfound %}
+                    <span class="text-muted">Added manually</span>
+                  {% elif row.colour %}
+                    <span class="colour-pill colour-{{ row.colour|lower }}">{{ row.colour }}</span>
+                  {% else %}
+                    <span class="colour-pill colour-none">No colour</span>
+                  {% endif %}
+                </td>
+                <td class="text-end"><strong>{{ row.quantity }}</strong></td>
+              </tr>
+            {% endfor %}
+            {% if stocktake_rows|length == 0 %}
+              <tr><td colspan="4" class="text-center text-muted py-3">No stocktake lines yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
