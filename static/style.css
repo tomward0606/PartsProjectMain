@@ -315,3 +315,61 @@ header form {
   display: inline-block;
   border: 1px solid rgba(0, 0, 0, 0.18);
 }
+
+/* Stocktake status chips (colour + text/icon for accessibility) */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 12px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.status-complete {
+  color: #0a5f2a;
+  background: #dff6e5;
+  border-color: #79ce95;
+}
+
+.status-in-progress {
+  color: #7a4c00;
+  background: #ffedcc;
+  border-color: #ffc266;
+}
+
+.status-not-started {
+  color: #374151;
+  background: #eef0f3;
+  border-color: #c8ced6;
+}
+
+.status-missing {
+  color: #7f1d1d;
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.status-manual {
+  color: #0f3d8a;
+  background: #dbeafe;
+  border-color: #60a5fa;
+}
+
+.manual-entry-badge {
+  background: #1d4ed8;
+  color: #fff;
+  font-weight: 700;
+}

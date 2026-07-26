@@ -316,7 +316,6 @@ function hideToast() {
 
 /* =========================
    Stocktake: mobile tabs + remember filters + catalogue qty controls
-   (safe to paste at the bottom of script.js)
    ========================= */
 (function () {
   if (window.__stocktakeMobileCatalogueInit) return;
@@ -601,8 +600,7 @@ function hideToast() {
 
 
 /* =========================
-   Stocktake cards UI (no table, phone-first)
-   Paste at bottom of static/script.js
+  Stocktake cards UI
    ========================= */
 (function () {
   const body = document.body;
@@ -738,8 +736,7 @@ function hideToast() {
 
 /* =========================
    Stocktake view toggle: All Parts vs My Stocktake
-   (filters cards to qty>0, feels like a separate page)
-   Paste at bottom of static/script.js
+  Filters cards to qty > 0
    ========================= */
 (function () {
   const body = document.body;
@@ -848,13 +845,7 @@ function hideToast() {
 
 
 /* =========================
-   Stocktake filters: submit only on button press
-   ========================= */
-
-
-/* =========================
    Stocktake Leader engineer edit: cards + auto filters + My Stocktake view
-   Paste at bottom of static/script.js
    ========================= */
 (function () {
   const body = document.body;

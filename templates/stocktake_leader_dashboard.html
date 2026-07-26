@@ -34,7 +34,7 @@
       </div>
 
       <a href="{{ url_for('stocktake_leader_export_all') }}" class="btn btn-dark btn-sm">
-        Export All CSV
+        Export All (Consolidated)
       </a>
     </div>
   </div>
@@ -69,7 +69,6 @@
       {% for s in submissions %}
         {# short email (before @) #}
         {% set short_email = (s.engineer_email.split('@')[0]) if s.engineer_email else 'unknown' %}
-        {% set st_status = (s.status or '')|lower %}
 
         <div class="col-12 col-md-6 col-xl-4">
           <div class="card shadow-sm border-0 rounded-4 h-100">
@@ -83,12 +82,14 @@
                   </div>
                 </div>
 
-                {% if st_status == 'checked' %}
-                  <span class="badge bg-success status-pill">Checked</span>
-                {% elif st_status == 'submitted' %}
-                  <span class="badge bg-warning text-dark status-pill">Submitted</span>
+                {% if s.progress_state == 'complete' %}
+                  <span class="status-chip status-complete status-pill" title="Complete"><span class="status-icon">C</span> Complete</span>
+                {% elif s.progress_state == 'in_progress' %}
+                  <span class="status-chip status-in-progress status-pill" title="Work started"><span class="status-icon">P</span> In Progress</span>
+                {% elif s.progress_state == 'not_started' %}
+                  <span class="status-chip status-not-started status-pill" title="Not started"><span class="status-icon">N</span> Not Started</span>
                 {% else %}
-                  <span class="badge bg-danger status-pill">Pending</span>
+                  <span class="status-chip status-missing status-pill" title="Missing information"><span class="status-icon">!</span> Missing Info</span>
                 {% endif %}
               </div>
 

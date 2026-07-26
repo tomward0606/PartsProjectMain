@@ -34,11 +34,13 @@
         <div class="small text-muted">
           {{ engineer_email }}
           {% if status == 'checked' and checked_at %}
+            · <span class="status-chip status-complete" title="Checked and complete"><span class="status-icon">C</span> Complete</span>
             · Checked: {{ checked_at }}{% if checked_by %} by {{ checked_by }}{% endif %}
           {% elif submitted_at and submitted_at != '—' %}
+            · <span class="status-chip status-complete" title="Submitted and locked"><span class="status-icon">C</span> Complete</span>
             · Submitted: {{ submitted_at }}
           {% else %}
-            · Pending
+            · <span class="status-chip status-in-progress" title="Work started but not finalised"><span class="status-icon">P</span> In Progress</span>
           {% endif %}
         </div>
       </div>
@@ -54,7 +56,7 @@
       <div class="btn-group" role="group" aria-label="Stocktake view">
         <button type="button" class="btn btn-outline-primary active" id="leadViewAllBtn">All Parts</button>
         <button type="button" class="btn btn-outline-primary" id="leadViewMineBtn">
-          Stocktake
+          Stocktake <span class="badge text-bg-secondary ms-1" id="leadMineCountBadge">0</span>
         </button>
       </div>
     </div>
@@ -94,7 +96,7 @@
 
   <!-- Empty state for "My Stocktake" view -->
   <div id="leadMineEmpty" class="text-muted text-center py-4" style="display:none;">
-    No items selected yet. Tap + on parts to add them.
+    No items selected yet. Use + on parts to add them.
   </div>
 
   {% if parts %}
@@ -162,6 +164,7 @@
               <th>Description</th>
               <th>Colour</th>
               <th class="text-end">Qty</th>
+              <th class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -169,12 +172,12 @@
               <tr>
                 <td>
                   {{ row.part_number }}
-                  {% if row.is_unfound %}<span class="badge bg-dark ms-1">ADDED MANUALLY</span>{% endif %}
+                  {% if row.is_unfound %}<span class="badge manual-entry-badge ms-1" title="Added manually and editable before finalisation">Manual Entry</span>{% endif %}
                 </td>
                 <td>{{ row.description }}</td>
                 <td>
                   {% if row.is_unfound %}
-                    <span class="text-muted">Added manually</span>
+                    <span class="status-chip status-manual" title="Manual entry"><span class="status-icon">M</span> Manual</span>
                   {% elif row.colour %}
                     <span class="colour-pill colour-{{ row.colour|lower }}">{{ row.colour }}</span>
                   {% else %}
@@ -182,14 +185,67 @@
                   {% endif %}
                 </td>
                 <td class="text-end">{{ row.quantity }}</td>
+                <td class="text-end">
+                  {% if row.is_unfound and status == 'draft' %}
+                    <button type="button" class="btn btn-sm btn-outline-primary lead-manual-edit-btn" data-target="lead-manual-edit-{{ row.unfound_id }}">Edit</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger lead-manual-delete-btn" data-target="lead-manual-delete-{{ row.unfound_id }}">Delete</button>
+                  {% else %}
+                    <span class="text-muted">-</span>
+                  {% endif %}
+                </td>
               </tr>
+              {% if row.is_unfound and status == 'draft' %}
+                <tr id="lead-manual-edit-{{ row.unfound_id }}" class="lead-manual-row" style="display:none;">
+                  <td colspan="5">
+                    <form method="POST" action="{{ url_for('stocktake_leader_edit_unfound', stocktake_id=stocktake_id, unfound_id=row.unfound_id) }}" class="row g-2 align-items-end">
+                      <div class="col-12 col-md-3">
+                        <label class="form-label small mb-1">Part Number</label>
+                        <input name="part_code" class="form-control form-control-sm" value="{{ row.part_number }}" required>
+                      </div>
+                      <div class="col-12 col-md-4">
+                        <label class="form-label small mb-1">Description</label>
+                        <input name="description" class="form-control form-control-sm" value="{{ row.description }}" required>
+                      </div>
+                      <div class="col-6 col-md-2">
+                        <label class="form-label small mb-1">Quantity</label>
+                        <input name="quantity" type="number" min="1" class="form-control form-control-sm" value="{{ row.quantity }}" required>
+                      </div>
+                      <div class="col-12 col-md-3">
+                        <label class="form-label small mb-1">Replace with Catalogue Part (optional)</label>
+                        <input name="replace_with_part_number" list="leadCatalogParts" class="form-control form-control-sm" placeholder="Search part number...">
+                      </div>
+                      <div class="col-12 d-flex gap-2 justify-content-end">
+                        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary lead-manual-cancel" data-target="lead-manual-edit-{{ row.unfound_id }}">Cancel</button>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+                <tr id="lead-manual-delete-{{ row.unfound_id }}" class="lead-manual-row" style="display:none;">
+                  <td colspan="5">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                      <div class="text-danger small">Are you sure you want to remove this manually added item?</div>
+                      <form method="POST" action="{{ url_for('stocktake_leader_delete_unfound', stocktake_id=stocktake_id, unfound_id=row.unfound_id) }}" class="d-flex gap-2">
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary lead-manual-cancel" data-target="lead-manual-delete-{{ row.unfound_id }}">Cancel</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              {% endif %}
             {% endfor %}
             {% if stocktake_rows|length == 0 %}
-              <tr><td colspan="4" class="text-center text-muted py-3">No lines yet.</td></tr>
+              <tr><td colspan="5" class="text-center text-muted py-3">No lines yet.</td></tr>
             {% endif %}
           </tbody>
         </table>
       </div>
+
+      <datalist id="leadCatalogParts">
+        {% for p in parts_catalogue_for_replace %}
+          <option value="{{ p.part_number }}">{{ p.description }}</option>
+        {% endfor %}
+      </datalist>
     </div>
   </div>
 
@@ -238,6 +294,39 @@
     </div>
   </div>
 </div>
+
+<script>
+  (function () {
+    function hideManualRow(targetId) {
+      const row = document.getElementById(targetId);
+      if (row) row.style.display = 'none';
+    }
+
+    function toggleManualRow(targetId) {
+      if (!targetId) return;
+      const row = document.getElementById(targetId);
+      if (!row) return;
+
+      const visible = row.style.display !== 'none';
+      document.querySelectorAll('.lead-manual-row').forEach((el) => {
+        el.style.display = 'none';
+      });
+      row.style.display = visible ? 'none' : '';
+    }
+
+    document.querySelectorAll('.lead-manual-edit-btn, .lead-manual-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', function () {
+        toggleManualRow(this.dataset.target);
+      });
+    });
+
+    document.querySelectorAll('.lead-manual-cancel').forEach((btn) => {
+      btn.addEventListener('click', function () {
+        hideManualRow(this.dataset.target);
+      });
+    });
+  })();
+</script>
 
 </body>
 </html>

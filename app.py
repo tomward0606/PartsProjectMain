@@ -273,6 +273,13 @@ def get_part_by_number(part_number: str):
     return next((p for p in parts_db if p["part_number"] == part_number), None)
 
 
+def get_part_by_number_ci(part_number: str):
+    needle = (part_number or "").strip().lower()
+    if not needle:
+        return None
+    return next((p for p in parts_db if (p.get("part_number") or "").strip().lower() == needle), None)
+
+
 def get_part_colour(part_number: str) -> str:
     part = get_part_by_number(part_number)
     return (part or {}).get("colour", "") or ""
@@ -308,6 +315,7 @@ def get_stocktake_rows_with_unfound(stocktake_id: int):
     )
     for uf in unfound_items:
         rows.append({
+            "unfound_id": uf.id,
             "part_number": uf.part_code,
             "description": uf.description,
             "quantity": int(uf.quantity or 0),
@@ -914,6 +922,7 @@ def stocktake_page(engineer_email):
         item_qty_map=item_qty_map,
         mine_lines=mine_lines,
         mine_total_qty=mine_total_qty,
+        parts_catalogue_for_replace=parts,
     )
 
 
@@ -948,6 +957,105 @@ def stocktake_add_unfound(engineer_email):
     ))
     db.session.commit()
     flash("Part added to stocktake.", "success")
+    return redirect(url_for("stocktake_page", engineer_email=engineer_email, view="mine"))
+
+
+@app.route("/stocktake/<engineer_email>/manual/<int:unfound_id>/edit", methods=["POST"])
+def stocktake_edit_unfound(engineer_email, unfound_id):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        flash("Stocktake not found. Start again.", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    if st.status in {"submitted", "checked"}:
+        flash("This stocktake is already submitted and locked.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    unfound = StocktakeUnfoundItem.query.filter_by(id=unfound_id, stocktake_id=st.id).first()
+    if not unfound:
+        flash("Manual entry not found.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    part_code = (request.form.get("part_code") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    replace_with = (request.form.get("replace_with_part_number") or "").strip()
+
+    try:
+        quantity = int(request.form.get("quantity", ""))
+    except ValueError:
+        quantity = -1
+
+    if not part_code or not description or quantity <= 0:
+        flash("Part number, description and numeric quantity above zero are required.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email, view="mine"))
+
+    if replace_with:
+        target_part = get_part_by_number_ci(replace_with)
+        if not target_part:
+            flash("Replacement part was not found in the stock catalogue.", "warning")
+            return redirect(url_for("stocktake_page", engineer_email=engineer_email, view="mine"))
+
+        target_pn = (target_part.get("part_number") or "").strip()
+        existing_item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=target_pn).first()
+        if existing_item:
+            existing_item.quantity = int(existing_item.quantity or 0) + quantity
+            flash("Duplicate warning: replacement part already existed, so quantities were merged.", "warning")
+        else:
+            db.session.add(StocktakeItem(
+                stocktake_id=st.id,
+                part_number=target_pn,
+                description=(target_part.get("description") or "").strip(),
+                quantity=quantity,
+            ))
+
+        db.session.delete(unfound)
+        db.session.commit()
+        flash("Manual entry replaced with catalogue item.", "success")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email, view="mine"))
+
+    existing_stock_item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=part_code).first()
+    duplicate_unfound = (
+        StocktakeUnfoundItem.query
+        .filter(
+            StocktakeUnfoundItem.stocktake_id == st.id,
+            StocktakeUnfoundItem.id != unfound.id,
+            func.lower(StocktakeUnfoundItem.part_code) == part_code.lower(),
+        )
+        .first()
+    )
+
+    unfound.part_code = part_code
+    unfound.description = description
+    unfound.quantity = quantity
+    db.session.commit()
+
+    if existing_stock_item or duplicate_unfound:
+        flash("Duplicate warning: this part code already appears in the stocktake.", "warning")
+    flash("Manual entry updated.", "success")
+    return redirect(url_for("stocktake_page", engineer_email=engineer_email, view="mine"))
+
+
+@app.route("/stocktake/<engineer_email>/manual/<int:unfound_id>/delete", methods=["POST"])
+def stocktake_delete_unfound(engineer_email, unfound_id):
+    run = get_or_create_active_stocktake_run()
+    st = Stocktake.query.filter_by(run_id=run.id, engineer_email=engineer_email.lower()).first()
+    if not st:
+        flash("Stocktake not found. Start again.", "warning")
+        return redirect(url_for("stocktake_start"))
+
+    if st.status in {"submitted", "checked"}:
+        flash("This stocktake is already submitted and locked.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    unfound = StocktakeUnfoundItem.query.filter_by(id=unfound_id, stocktake_id=st.id).first()
+    if not unfound:
+        flash("Manual entry not found.", "warning")
+        return redirect(url_for("stocktake_page", engineer_email=engineer_email))
+
+    db.session.delete(unfound)
+    db.session.commit()
+    flash("Manual entry deleted.", "success")
     return redirect(url_for("stocktake_page", engineer_email=engineer_email, view="mine"))
 
 
@@ -1445,6 +1553,15 @@ def stocktake_leader_dashboard():
     for st in all_stocktakes:
         items = StocktakeItem.query.filter_by(stocktake_id=st.id).all()
         unfound_items = StocktakeUnfoundItem.query.filter_by(stocktake_id=st.id).all()
+        lines = len(items) + len(unfound_items)
+        total_qty = sum(int(i.quantity or 0) for i in items) + sum(int(i.quantity or 0) for i in unfound_items)
+
+        if st.status in {"submitted", "checked"}:
+            progress_state = "complete"
+        elif lines == 0:
+            progress_state = "not_started"
+        else:
+            progress_state = "in_progress"
 
         # IMPORTANT: use submitted_at (not submitted_at_str) so templates can detect it
         submitted_at = (
@@ -1456,9 +1573,10 @@ def stocktake_leader_dashboard():
             "id": st.id,
             "engineer_email": st.engineer_email,
             "submitted_at": submitted_at,     # <-- template-friendly
-            "lines": len(items) + len(unfound_items),
-            "total_qty": sum(int(i.quantity or 0) for i in items) + sum(int(i.quantity or 0) for i in unfound_items),
+            "lines": lines,
+            "total_qty": total_qty,
             "status": st.status,
+            "progress_state": progress_state,
             "checked_by": st.checked_by,
             "checked_at": st.checked_at.strftime("%Y-%m-%d %H:%M UTC") if st.checked_at else None,
         })
@@ -1577,8 +1695,106 @@ def stocktake_leader_edit_engineer(stocktake_id):
         parts=filtered,
         categories=get_categories(parts),
         selected_category=category,
-        search=search
+        search=search,
+        parts_catalogue_for_replace=parts,
     )
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/manual/<int:unfound_id>/edit", methods=["POST"])
+def stocktake_leader_edit_unfound(stocktake_id, unfound_id):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    st = Stocktake.query.get_or_404(stocktake_id)
+    if st.status in {"submitted", "checked"}:
+        flash("This stocktake is submitted/finalised and manual entries are locked.", "warning")
+        return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    unfound = StocktakeUnfoundItem.query.filter_by(id=unfound_id, stocktake_id=st.id).first()
+    if not unfound:
+        flash("Manual entry not found.", "warning")
+        return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    part_code = (request.form.get("part_code") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    replace_with = (request.form.get("replace_with_part_number") or "").strip()
+
+    try:
+        quantity = int(request.form.get("quantity", ""))
+    except ValueError:
+        quantity = -1
+
+    if not part_code or not description or quantity <= 0:
+        flash("Part number, description and numeric quantity above zero are required.", "warning")
+        return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    if replace_with:
+        target_part = get_part_by_number_ci(replace_with)
+        if not target_part:
+            flash("Replacement part was not found in the stock catalogue.", "warning")
+            return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+        target_pn = (target_part.get("part_number") or "").strip()
+        existing_item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=target_pn).first()
+        if existing_item:
+            existing_item.quantity = int(existing_item.quantity or 0) + quantity
+            flash("Duplicate warning: replacement part already existed, so quantities were merged.", "warning")
+        else:
+            db.session.add(StocktakeItem(
+                stocktake_id=st.id,
+                part_number=target_pn,
+                description=(target_part.get("description") or "").strip(),
+                quantity=quantity,
+            ))
+
+        db.session.delete(unfound)
+        db.session.commit()
+        flash("Manual entry replaced with catalogue item.", "success")
+        return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    existing_stock_item = StocktakeItem.query.filter_by(stocktake_id=st.id, part_number=part_code).first()
+    duplicate_unfound = (
+        StocktakeUnfoundItem.query
+        .filter(
+            StocktakeUnfoundItem.stocktake_id == st.id,
+            StocktakeUnfoundItem.id != unfound.id,
+            func.lower(StocktakeUnfoundItem.part_code) == part_code.lower(),
+        )
+        .first()
+    )
+
+    unfound.part_code = part_code
+    unfound.description = description
+    unfound.quantity = quantity
+    db.session.commit()
+
+    if existing_stock_item or duplicate_unfound:
+        flash("Duplicate warning: this part code already appears in the stocktake.", "warning")
+    flash("Manual entry updated.", "success")
+    return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+
+@app.route("/stocktake-leader/engineer/<int:stocktake_id>/manual/<int:unfound_id>/delete", methods=["POST"])
+def stocktake_leader_delete_unfound(stocktake_id, unfound_id):
+    guard = require_stocktake_leader()
+    if guard:
+        return guard
+
+    st = Stocktake.query.get_or_404(stocktake_id)
+    if st.status in {"submitted", "checked"}:
+        flash("This stocktake is submitted/finalised and manual entries are locked.", "warning")
+        return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    unfound = StocktakeUnfoundItem.query.filter_by(id=unfound_id, stocktake_id=st.id).first()
+    if not unfound:
+        flash("Manual entry not found.", "warning")
+        return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
+
+    db.session.delete(unfound)
+    db.session.commit()
+    flash("Manual entry deleted.", "success")
+    return redirect(url_for("stocktake_leader_edit_engineer", stocktake_id=stocktake_id))
 
 
 @app.route("/stocktake-leader/engineer/<int:stocktake_id>/add/<path:part_number>")
@@ -1804,7 +2020,7 @@ def build_master_totals_for_run(run_id: int):
         .join(Stocktake, StocktakeItem.stocktake_id == Stocktake.id)
         .filter(
             Stocktake.run_id == run_id,
-            Stocktake.status == "submitted",
+            Stocktake.status.in_(["submitted", "checked"]),
         )
         .group_by(StocktakeItem.part_number)
         .order_by(StocktakeItem.part_number.asc())
@@ -1838,7 +2054,7 @@ def build_master_totals_for_run(run_id: int):
         .join(Stocktake, StocktakeUnfoundItem.stocktake_id == Stocktake.id)
         .filter(
             Stocktake.run_id == run_id,
-            Stocktake.status == "submitted",
+            Stocktake.status.in_(["submitted", "checked"]),
         )
         .group_by(StocktakeUnfoundItem.part_code, StocktakeUnfoundItem.description)
         .all()
@@ -1889,7 +2105,7 @@ def stocktake_leader_export_all():
     # Pull all submitted stocktakes for this run
     submissions = (
         Stocktake.query
-        .filter_by(run_id=run.id, status="submitted")
+        .filter(Stocktake.run_id == run.id, Stocktake.status.in_(["submitted", "checked"]))
         .order_by(Stocktake.submitted_at.asc())
         .all()
     )
@@ -1905,12 +2121,10 @@ def stocktake_leader_export_all():
     w = csv.writer(buf)
 
     # One file, all engineers, one row per item
-    w.writerow(["Engineer Email", "Submitted At", "Part Number", "Description", "Quantity", "Run"])
+    w.writerow(["Engineer Name", "Part Number", "Description", "Quantity", "Location", "Notes"])
 
     for sub in submissions:
         engineer = getattr(sub, "engineer_email", None) or ""
-        submitted_at = getattr(sub, "submitted_at", None)
-        submitted_at_str = submitted_at.strftime("%Y-%m-%d %H:%M:%S") if submitted_at else ""
 
         items = (
             StocktakeItem.query
@@ -1922,7 +2136,7 @@ def stocktake_leader_export_all():
         for it in items:
             pn = (it.part_number or "").strip()
             qty = int(it.quantity or 0)
-            w.writerow([engineer, submitted_at_str, pn, desc_map.get(pn, ""), qty, run.name])
+            w.writerow([engineer, pn, desc_map.get(pn, ""), qty, "", ""])
 
         unfound_items = (
             StocktakeUnfoundItem.query
@@ -1931,7 +2145,7 @@ def stocktake_leader_export_all():
             .all()
         )
         for uf in unfound_items:
-            w.writerow([engineer, submitted_at_str, uf.part_code, f"[UNFOUND] {uf.description}", int(uf.quantity or 0), run.name])
+            w.writerow([engineer, uf.part_code, uf.description, int(uf.quantity or 0), "", "Manual entry"])
 
     filename = f"stocktake_all_{run.name.replace(' ', '_')}.csv"
     return Response(

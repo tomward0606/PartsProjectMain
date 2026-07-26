@@ -37,12 +37,12 @@
                 <tr>
                   <td>
                     <strong>{{ it.part_number }}</strong>
-                    {% if it.is_unfound %}<span class="badge bg-dark ms-1">ADDED MANUALLY</span>{% endif %}
+                    {% if it.is_unfound %}<span class="badge manual-entry-badge ms-1" title="Manual Entry">Manual Entry</span>{% endif %}
                   </td>
                   <td class="text-muted">{{ it.description }}</td>
                   <td>
                     {% if it.is_unfound %}
-                      <span class="text-muted">Added manually</span>
+                      <span class="status-chip status-manual" title="Manual entry"><span class="status-icon">M</span> Manual</span>
                     {% elif it.colour %}
                       <span class="colour-pill colour-{{ it.colour|lower }}">{{ it.colour }}</span>
                     {% else %}
