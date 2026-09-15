@@ -656,7 +656,13 @@ def update_quantity(part_number):
 # Submit basket (sends email + writes PartsOrder/ReagentOrder)
 @app.route("/submit_basket", methods=["POST"])
 def submit_basket():
-    engineer_name = request.form["email_user"].strip()
+    engineer_name = (request.form.get("email_user") or "").strip()
+    if not engineer_name:
+        name_parts = [
+            (request.form.get("first_name") or "").strip(),
+            (request.form.get("last_name") or "").strip(),
+        ]
+        engineer_name = ".".join(part for part in name_parts if part)
     engineer_email = normalize_order_email(engineer_name)
     source = request.form.get("source", "catalogue")
     basket = session.get("basket", {})
