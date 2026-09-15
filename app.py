@@ -707,7 +707,10 @@ def submit_basket():
 
     # Enhanced email sending with error handling
     try:
-        logger.info(f"Sending {source} order email from {engineer_email}")
+        logger.info(
+            f"Sending {source} order email as {app.config.get('MAIL_DEFAULT_SENDER')} "
+            f"for engineer {engineer_email}"
+        )
         
         msg = Message(subject, recipients=recipients, cc=[engineer_email], body=body_text)
         mail.send(msg)
