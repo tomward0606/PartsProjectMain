@@ -705,18 +705,8 @@ def submit_basket():
         recipients = ["StockRequests@servitech.co.uk"]
         logger.info(f"Sending parts email to: {recipients}")
 
-    # Enhanced email sending with error handling
+    # Save the order first so the stock system receives it even when email is unavailable.
     try:
-        logger.info(
-            f"Sending {source} order email as {app.config.get('MAIL_DEFAULT_SENDER')} "
-            f"for engineer {engineer_email}"
-        )
-        
-        msg = Message(subject, recipients=recipients, cc=[engineer_email], body=body_text)
-        mail.send(msg)
-        logger.info(f"SUCCESS: Email sent successfully to {recipients}")
-
-        # Save to database only after successful email send
         if source == "reagents":
             new_order = ReagentOrder(email=engineer_email, date=datetime.utcnow())
             for pnum, item in basket.items():
@@ -732,15 +722,34 @@ def submit_basket():
 
         db.session.add(new_order)
         db.session.commit()
-
         session["basket"] = {}
-        flash("Your order has been sent!", "success")
-        return render_template("confirmation.html")
-        
     except Exception as e:
-        logger.error(f"ERROR: Failed to send {source} order email - {str(e)}")
-        flash(f"Failed to send order. Please contact IT support.", "danger")
+        db.session.rollback()
+        logger.error(f"ERROR: Failed to save {source} order - {str(e)}")
+        flash("Failed to submit order. Please contact IT support.", "danger")
         return redirect(url_for("view_reagents_basket" if source == "reagents" else "view_parts_basket"))
+
+    email_sent = False
+    if app.config.get("MAIL_USERNAME") and app.config.get("MAIL_PASSWORD"):
+        try:
+            logger.info(
+                f"Sending {source} order email as {app.config.get('MAIL_DEFAULT_SENDER')} "
+                f"for engineer {engineer_email}"
+            )
+            msg = Message(subject, recipients=recipients, cc=[engineer_email], body=body_text)
+            mail.send(msg)
+            email_sent = True
+            logger.info(f"SUCCESS: Email sent successfully to {recipients}")
+        except Exception as e:
+            logger.error(f"ERROR: Order saved but email failed for {source} - {str(e)}")
+    else:
+        logger.warning("Order saved without email: SMTP credentials are not configured")
+
+    if email_sent:
+        flash("Your order has been submitted and emailed.", "success")
+    else:
+        flash("Your order has been submitted to the stock system.", "success")
+    return render_template("confirmation.html")
 
 # Reorder (reagents)
 @app.route("/reorder", methods=["GET", "POST"])
