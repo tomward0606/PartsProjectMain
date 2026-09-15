@@ -33,15 +33,15 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Brevo SMTP settings are supplied through Render environment variables.
-app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER", "smtp-relay.brevo.com")
+# Outlook SMTP settings are supplied through Render environment variables.
+app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER", "smtp-mail.outlook.com")
 app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", "587"))
 app.config["MAIL_USE_TLS"] = os.environ.get("MAIL_USE_TLS", "true").lower() == "true"
-app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "")
+app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "stocksystemservitech@outlook.com")
 app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", "")
 app.config["MAIL_DEFAULT_SENDER"] = (
     os.environ.get("MAIL_SENDER_NAME", "Servitech Stock"),
-    os.environ.get("MAIL_DEFAULT_SENDER", "")
+    os.environ.get("MAIL_DEFAULT_SENDER", "stocksystemservitech@outlook.com")
 )
 
 # Production settings - ensure emails are sent
