@@ -33,14 +33,16 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# PRODUCTION: Mail configuration should use environment variables
-# For production, these should be loaded from environment variables instead of hardcoded
-app.config["MAIL_SERVER"] = "smtp.gmail.com"
-app.config["MAIL_PORT"] = 587
-app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = "servitech.stock@gmail.com"
-app.config["MAIL_PASSWORD"] = "qmorqthzpbxqnkrp"  # In production, use environment variable
-app.config["MAIL_DEFAULT_SENDER"] = ("Servitech Stock", "servitech.stock@gmail.com")
+# Brevo SMTP settings are supplied through Render environment variables.
+app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER", "smtp-relay.brevo.com")
+app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", "587"))
+app.config["MAIL_USE_TLS"] = os.environ.get("MAIL_USE_TLS", "true").lower() == "true"
+app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "")
+app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", "")
+app.config["MAIL_DEFAULT_SENDER"] = (
+    os.environ.get("MAIL_SENDER_NAME", "Servitech Stock"),
+    os.environ.get("MAIL_DEFAULT_SENDER", "")
+)
 
 # Production settings - ensure emails are sent
 app.config["TESTING"] = False
