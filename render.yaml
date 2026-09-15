@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: partsprojectmain
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 2 app:app
+    envVars:
+      - key: MAIL_SERVER
+        value: smtp-mail.outlook.com
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USE_TLS
+        value: "true"
+      - key: MAIL_USERNAME
+        value: stocksystemservitech@outlook.com
+      - key: MAIL_DEFAULT_SENDER
+        value: stocksystemservitech@outlook.com
+      - key: MAIL_SENDER_NAME
+        value: Servitech Stock
+      - key: MAIL_PASSWORD
+        sync: false
